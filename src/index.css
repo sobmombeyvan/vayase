@@ -1,0 +1,212 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Urbanist:wght@500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   VAYASE Consulting - Design System Premium
+   Charte: #081025 nuit · #49BFFF accent · #FFFFFF
+   All colors MUST be HSL.
+   ============================================ */
+
+@layer base {
+  :root {
+    /* Brand */
+    --vayase-night: 224 65% 9%;          /* #081025 */
+    --vayase-night-soft: 224 50% 14%;
+    --vayase-accent: 201 100% 64%;       /* #49BFFF */
+    --vayase-accent-soft: 201 100% 92%;
+
+    /* Surfaces */
+    --background: 220 25% 98%;
+    --foreground: 224 65% 9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 224 65% 9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 65% 9%;
+
+    --primary: 224 65% 9%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 20% 96%;
+    --secondary-foreground: 224 65% 9%;
+
+    --muted: 220 20% 96%;
+    --muted-foreground: 224 15% 45%;
+
+    --accent: 201 100% 64%;
+    --accent-foreground: 224 65% 9%;
+
+    --destructive: 0 75% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 152 65% 42%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 95% 55%;
+    --warning-foreground: 224 65% 9%;
+
+    --border: 220 20% 91%;
+    --input: 220 20% 91%;
+    --ring: 201 100% 64%;
+
+    --radius: 0.875rem;
+
+    /* Sidebar */
+    --sidebar-background: 224 65% 9%;
+    --sidebar-foreground: 220 20% 85%;
+    --sidebar-primary: 201 100% 64%;
+    --sidebar-primary-foreground: 224 65% 9%;
+    --sidebar-accent: 224 50% 14%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 224 40% 18%;
+    --sidebar-ring: 201 100% 64%;
+
+    /* Gradients */
+    --gradient-night: linear-gradient(135deg, hsl(224 65% 9%) 0%, hsl(224 55% 16%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(201 100% 64%) 0%, hsl(210 100% 56%) 100%);
+    --gradient-hero: radial-gradient(ellipse at top right, hsl(201 100% 64% / 0.15), transparent 60%), linear-gradient(135deg, hsl(224 65% 9%) 0%, hsl(224 60% 12%) 100%);
+    --gradient-glass: linear-gradient(135deg, hsl(0 0% 100% / 0.06), hsl(0 0% 100% / 0.02));
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px 0 hsl(224 65% 9% / 0.05);
+    --shadow-md: 0 4px 12px -2px hsl(224 65% 9% / 0.08), 0 2px 4px -2px hsl(224 65% 9% / 0.04);
+    --shadow-lg: 0 12px 32px -8px hsl(224 65% 9% / 0.12), 0 4px 8px -4px hsl(224 65% 9% / 0.06);
+    --shadow-xl: 0 24px 56px -12px hsl(224 65% 9% / 0.18);
+    --shadow-glow: 0 0 32px hsl(201 100% 64% / 0.35);
+    --shadow-card: 0 1px 0 hsl(220 20% 91%), 0 1px 3px hsl(224 65% 9% / 0.04);
+
+    /* Motion */
+    --ease-premium: cubic-bezier(0.22, 1, 0.36, 1);
+    --duration-fast: 180ms;
+    --duration-normal: 280ms;
+  }
+
+  .dark {
+    --background: 224 65% 6%;
+    --foreground: 220 20% 95%;
+
+    --card: 224 55% 9%;
+    --card-foreground: 220 20% 95%;
+
+    --popover: 224 55% 9%;
+    --popover-foreground: 220 20% 95%;
+
+    --primary: 201 100% 64%;
+    --primary-foreground: 224 65% 9%;
+
+    --secondary: 224 40% 14%;
+    --secondary-foreground: 220 20% 95%;
+
+    --muted: 224 40% 14%;
+    --muted-foreground: 220 15% 65%;
+
+    --accent: 201 100% 64%;
+    --accent-foreground: 224 65% 9%;
+
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 152 60% 50%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 90% 60%;
+    --warning-foreground: 224 65% 9%;
+
+    --border: 224 40% 16%;
+    --input: 224 40% 16%;
+    --ring: 201 100% 64%;
+
+    --sidebar-background: 224 65% 5%;
+    --sidebar-foreground: 220 20% 80%;
+    --sidebar-primary: 201 100% 64%;
+    --sidebar-primary-foreground: 224 65% 9%;
+    --sidebar-accent: 224 50% 11%;
+    --sidebar-accent-foreground: 220 20% 95%;
+    --sidebar-border: 224 40% 13%;
+    --sidebar-ring: 201 100% 64%;
+
+    --gradient-hero: radial-gradient(ellipse at top right, hsl(201 100% 64% / 0.12), transparent 60%), linear-gradient(135deg, hsl(224 65% 5%) 0%, hsl(224 60% 8%) 100%);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Urbanist', 'Inter', system-ui, sans-serif;
+    letter-spacing: -0.02em;
+  }
+}
+
+@layer components {
+  .vayase-card {
+    @apply bg-card rounded-2xl border border-border;
+    box-shadow: var(--shadow-card);
+    transition: box-shadow var(--duration-normal) var(--ease-premium), transform var(--duration-normal) var(--ease-premium);
+  }
+  .vayase-card-hover:hover {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-2px);
+  }
+
+  .vayase-glass {
+    background: var(--gradient-glass);
+    backdrop-filter: blur(12px);
+    @apply border border-white/10;
+  }
+
+  .vayase-gradient-text {
+    background: var(--gradient-accent);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 3px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.5); }
+}
+
+@layer utilities {
+  .animate-fade-in {
+    animation: fade-in 0.4s var(--ease-premium);
+  }
+  .animate-slide-up {
+    animation: slide-up 0.5s var(--ease-premium);
+  }
+  .animate-shimmer {
+    background: linear-gradient(90deg, transparent, hsl(var(--muted) / 0.6), transparent);
+    background-size: 200% 100%;
+    animation: shimmer 1.6s infinite;
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
