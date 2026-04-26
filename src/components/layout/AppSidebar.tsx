@@ -2,7 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   LayoutDashboard, Users, UserPlus, ListChecks, Wallet,
-  Calendar, FileText, BarChart3, Settings, ChevronLeft, ChevronRight, Shield, BookOpen,
+  Calendar, FileText, BarChart3, ChevronLeft, ChevronRight, Shield, BookOpen, CheckSquare, DatabaseBackup,
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -15,12 +15,14 @@ export function AppSidebar() {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const canFinance = hasAnyRole(['super_admin', 'admin', 'comptable']);
+  const isAdmin = hasAnyRole(['super_admin', 'admin']);
 
   const items = [
     { to: '/', icon: LayoutDashboard, label: t('nav.dashboard'), exact: true },
     { to: '/leads', icon: UserPlus, label: t('nav.leads') },
     { to: '/clients', icon: Users, label: t('nav.clients') },
     { to: '/procedures', icon: ListChecks, label: t('nav.procedures') },
+    { to: '/tasks', icon: CheckSquare, label: t('nav.tasks') },
     ...(canFinance ? [{ to: '/finance', icon: Wallet, label: t('nav.finance') }] : []),
   ];
 
@@ -29,7 +31,8 @@ export function AppSidebar() {
     { to: '/documents', icon: FileText, label: t('nav.documents') },
     { to: '/reports', icon: BarChart3, label: t('nav.reports') },
     { to: '/guide', icon: BookOpen, label: t('nav.guide') },
-    ...(hasAnyRole(['super_admin', 'admin']) ? [{ to: '/employees', icon: Shield, label: t('nav.employees') }] : []),
+    ...(isAdmin ? [{ to: '/employees', icon: Shield, label: t('nav.employees') }] : []),
+    ...(isAdmin ? [{ to: '/admin-ops', icon: DatabaseBackup, label: t('nav.adminOps') }] : []),
   ];
 
   return (

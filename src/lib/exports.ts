@@ -148,7 +148,7 @@ export function generateFinanceReport(payments: any[], summary: { total: number;
     doc.setFontSize(11);
     doc.setTextColor(...VAYASE_NAVY);
     doc.setFont('helvetica', 'bold');
-    doc.text(`${c.value.toLocaleString('fr-FR')} EUR`, x + 4, 68);
+    doc.text(`${c.value.toLocaleString('fr-FR')} XOF`, x + 4, 68);
     doc.setFont('helvetica', 'normal');
   });
 
@@ -169,6 +169,55 @@ export function generateFinanceReport(payments: any[], summary: { total: number;
 
   footer(doc);
   doc.save(`rapport-finance-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+}
+
+export function generateGlobalSummaryReport(data: {
+  clientsCount: number;
+  leadsCount: number;
+  contractsCount: number;
+  paymentsCount: number;
+  totalRevenue: number;
+  paidRevenue: number;
+}) {
+  const doc = new jsPDF();
+  header(doc, 'RESUME GLOBAL', format(new Date(), 'dd/MM/yyyy'));
+
+  const cards = [
+    { label: 'Prospects', value: String(data.leadsCount) },
+    { label: 'Clients', value: String(data.clientsCount) },
+    { label: 'Contrats', value: String(data.contractsCount) },
+    { label: 'Paiements', value: String(data.paymentsCount) },
+  ];
+
+  cards.forEach((c, i) => {
+    const x = 14 + i * 47;
+    doc.setFillColor(245, 248, 252);
+    doc.roundedRect(x, 50, 43, 24, 2, 2, 'F');
+    doc.setFontSize(8);
+    doc.setTextColor(120);
+    doc.text(c.label, x + 4, 58);
+    doc.setFontSize(13);
+    doc.setTextColor(...VAYASE_NAVY);
+    doc.setFont('helvetica', 'bold');
+    doc.text(c.value, x + 4, 68);
+    doc.setFont('helvetica', 'normal');
+  });
+
+  autoTable(doc, {
+    startY: 88,
+    theme: 'grid',
+    head: [['Indicateur', 'Valeur']],
+    body: [
+      ['Revenus contrats', `${data.totalRevenue.toLocaleString('fr-FR')} XOF`],
+      ['Montant encaisse', `${data.paidRevenue.toLocaleString('fr-FR')} XOF`],
+      ['Date export', format(new Date(), 'dd/MM/yyyy HH:mm')],
+    ],
+    headStyles: { fillColor: VAYASE_NAVY, textColor: 255 },
+    styles: { fontSize: 10, cellPadding: 4 },
+  });
+
+  footer(doc);
+  doc.save(`resume-global-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
 }
 
 export function exportToExcel(data: any[], filename: string, sheetName = 'Données') {

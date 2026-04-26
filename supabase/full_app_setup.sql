@@ -7,7 +7,7 @@
 -- ENUMS
 -- =========================
 DO $$ BEGIN
-  CREATE TYPE public.app_role AS ENUM ('super_admin', 'admin', 'agent', 'comptable', 'manager', 'support');
+  CREATE TYPE public.app_role AS ENUM ('super_admin', 'admin', 'agent', 'marketing_agent', 'comptable', 'manager', 'support');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
@@ -136,7 +136,7 @@ CREATE TABLE IF NOT EXISTS public.contracts (
   client_id UUID NOT NULL REFERENCES public.clients(id) ON DELETE CASCADE,
   contract_number TEXT NOT NULL UNIQUE,
   total_amount NUMERIC(12,2) NOT NULL,
-  currency TEXT NOT NULL DEFAULT 'EUR',
+  currency TEXT NOT NULL DEFAULT 'XOF',
   status contract_status NOT NULL DEFAULT 'active',
   signed_date DATE,
   notes TEXT,
@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS public.payments (
   contract_id UUID NOT NULL REFERENCES public.contracts(id) ON DELETE CASCADE,
   client_id UUID NOT NULL REFERENCES public.clients(id) ON DELETE CASCADE,
   amount NUMERIC(12,2) NOT NULL,
-  currency TEXT NOT NULL DEFAULT 'EUR',
+  currency TEXT NOT NULL DEFAULT 'XOF',
   payment_method TEXT,
   payment_date DATE,
   due_date DATE,
@@ -276,7 +276,7 @@ RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = public AS
     SELECT 1
     FROM public.user_roles
     WHERE user_id = _user_id
-      AND role IN ('super_admin','admin','agent','manager')
+      AND role IN ('super_admin','admin','agent','marketing_agent','manager')
   )
 $$;
 
@@ -297,7 +297,7 @@ BEGIN
   VALUES (NEW.id, COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.email))
   ON CONFLICT (id) DO NOTHING;
 
-  IF lower(COALESCE(NEW.email, '')) = 'asapptouch12@gmail.com' THEN
+  IF lower(COALESCE(NEW.email, '')) = 'sobmombeyvan@gmail.com' THEN
     INSERT INTO public.user_roles (user_id, role)
     VALUES (NEW.id, 'super_admin')
     ON CONFLICT (user_id, role) DO NOTHING;
@@ -305,13 +305,9 @@ BEGIN
     INSERT INTO public.user_roles (user_id, role)
     VALUES (NEW.id, 'admin')
     ON CONFLICT (user_id, role) DO NOTHING;
-  ELSIF (SELECT COUNT(*) FROM auth.users) = 1 THEN
-    INSERT INTO public.user_roles (user_id, role)
-    VALUES (NEW.id, 'super_admin')
-    ON CONFLICT (user_id, role) DO NOTHING;
   ELSE
     INSERT INTO public.user_roles (user_id, role)
-    VALUES (NEW.id, 'support')
+    VALUES (NEW.id, 'agent')
     ON CONFLICT (user_id, role) DO NOTHING;
   END IF;
 

@@ -91,8 +91,8 @@ export default function Reports() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { icon: Users, label: 'Clients', value: clients.length, color: 'text-blue-500 bg-blue-500/10' },
-          { icon: Wallet, label: 'Revenus contrats', value: `${totalRevenue.toLocaleString('fr-FR')} EUR`, color: 'text-emerald-500 bg-emerald-500/10' },
-          { icon: TrendingUp, label: 'Encaissé', value: `${paidAmount.toLocaleString('fr-FR')} EUR`, color: 'text-vayase-accent bg-vayase-accent/10' },
+          { icon: Wallet, label: 'Revenus contrats', value: `${totalRevenue.toLocaleString('fr-FR')} XOF`, color: 'text-emerald-500 bg-emerald-500/10' },
+          { icon: TrendingUp, label: 'Encaissé', value: `${paidAmount.toLocaleString('fr-FR')} XOF`, color: 'text-vayase-accent bg-vayase-accent/10' },
           { icon: Globe, label: 'Pays', value: Object.keys(byCountry).length, color: 'text-purple-500 bg-purple-500/10' },
         ].map((s, i) => (
           <Card key={i} className="p-4">

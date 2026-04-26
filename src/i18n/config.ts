@@ -20,6 +20,7 @@ const resources = {
         dashboard: 'Tableau de bord', leads: 'Prospects', clients: 'Clients',
         procedures: 'Procédures', finance: 'Finance', employees: 'Employés',
         calendar: 'Calendrier', documents: 'Documents', reports: 'Rapports', guide: 'Guide',
+        tasks: 'Tâches', adminOps: 'Admin Ops',
         settings: 'Paramètres', logout: 'Déconnexion',
       },
       auth: {
@@ -71,7 +72,7 @@ const resources = {
       },
       roles: {
         super_admin: 'Super Admin', admin: 'Administrateur', agent: 'Agent Immigration',
-        comptable: 'Comptable', manager: 'Manager', support: 'Support',
+        marketing_agent: 'Agent Marketing', comptable: 'Comptable', manager: 'Manager', support: 'Support',
       },
     }
   },
@@ -92,6 +93,7 @@ const resources = {
         dashboard: 'Dashboard', leads: 'Leads', clients: 'Clients',
         procedures: 'Procedures', finance: 'Finance', employees: 'Employees',
         calendar: 'Calendar', documents: 'Documents', reports: 'Reports', guide: 'Guide',
+        tasks: 'Tasks', adminOps: 'Admin Ops',
         settings: 'Settings', logout: 'Logout',
       },
       auth: {
@@ -143,7 +145,7 @@ const resources = {
       },
       roles: {
         super_admin: 'Super Admin', admin: 'Administrator', agent: 'Immigration Agent',
-        comptable: 'Accountant', manager: 'Manager', support: 'Support',
+        marketing_agent: 'Marketing Agent', comptable: 'Accountant', manager: 'Manager', support: 'Support',
       },
     }
   },

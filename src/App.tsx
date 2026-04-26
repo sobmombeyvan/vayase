@@ -18,6 +18,8 @@ import Documents from "./pages/Documents";
 import Employees from "./pages/Employees";
 import Reports from "./pages/Reports";
 import Guide from "./pages/Guide";
+import Tasks from "./pages/Tasks";
+import AdminOps from "./pages/AdminOps";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -43,6 +45,8 @@ const App = () => (
               <Route path="/employees" element={<Employees />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/guide" element={<Guide />} />
+              <Route path="/tasks" element={<Tasks />} />
+              <Route path="/admin-ops" element={<AdminOps />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

@@ -19,6 +19,7 @@ const allRoles = [
   { value: 'super_admin', label: 'Super Admin', color: 'bg-red-500/15 text-red-500' },
   { value: 'admin', label: 'Administrateur', color: 'bg-purple-500/15 text-purple-500' },
   { value: 'agent', label: 'Agent', color: 'bg-blue-500/15 text-blue-500' },
+  { value: 'marketing_agent', label: 'Marketing Agent', color: 'bg-pink-500/15 text-pink-500' },
   { value: 'comptable', label: 'Comptable', color: 'bg-emerald-500/15 text-emerald-500' },
   { value: 'manager', label: 'Manager', color: 'bg-amber-500/15 text-amber-500' },
   { value: 'support', label: 'Support', color: 'bg-muted text-muted-foreground' },
