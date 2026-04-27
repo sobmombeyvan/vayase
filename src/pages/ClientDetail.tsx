@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Mail, Phone, MapPin, Calendar, Briefcase, Globe, User, FileText, Wallet, CheckCircle2, Circle, Clock, AlertCircle, Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Mail, Phone, MapPin, Calendar, Briefcase, Globe, User, FileText, Wallet, CheckCircle2, Circle, Clock, AlertCircle, Loader2, Pencil, Plus, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
@@ -48,6 +48,8 @@ export default function ClientDetail() {
   const canEdit = hasAnyRole(['super_admin', 'admin', 'agent', 'manager']);
   const canFinance = hasAnyRole(['super_admin', 'admin', 'comptable']);
   const isAdmin = hasAnyRole(['super_admin', 'admin']);
+  const canManageProcedure = isAdmin;
+  const canManageSteps = isAdmin;
 
   const [client, setClient] = useState<any>(null);
   const [steps, setSteps] = useState<any[]>([]);
@@ -68,6 +70,7 @@ export default function ClientDetail() {
   const [deleting, setDeleting] = useState(false);
   const [contractOpen, setContractOpen] = useState(false);
   const [contractForm, setContractForm] = useState<any>({ total_amount: '', currency: 'XOF', status: 'active', signed_date: '', notes: '' });
+  const [newStepForm, setNewStepForm] = useState<any>({ step_name: '', due_date: '', notes: '' });
 
   const load = () => {
     if (!id) return;
@@ -140,6 +143,10 @@ export default function ClientDetail() {
     const nextTemplateId = editForm.procedure_template_id === 'none' ? null : editForm.procedure_template_id;
     const templateChanged = previousTemplateId !== nextTemplateId;
 
+    if (templateChanged && !canManageProcedure) {
+      return toast.error('Seul un admin peut changer la procédure');
+    }
+
     if (templateChanged && nextTemplateId && steps.length > 0) {
       const ok = window.confirm('Changer la procédure va remplacer les étapes actuelles du client. Continuer ?');
       if (!ok) return;
@@ -211,7 +218,7 @@ export default function ClientDetail() {
   };
 
   const addStepNote = async (step: any, clearAfter = false) => {
-    if (!canEdit) return false;
+    if (!canManageSteps) return false;
     const content = (stepNoteInputs[step.id] || '').trim();
     if (!content) return false;
     const { data: authData } = await supabase.auth.getUser();
@@ -232,7 +239,7 @@ export default function ClientDetail() {
   };
 
   const updateStepStatus = async (step: any, newStatus: string) => {
-    if (!canEdit) return toast.error("Vous n'avez pas les permissions");
+    if (!canManageSteps) return toast.error("Seul un admin peut modifier les étapes");
     const noteBeforeValidation = (stepNoteInputs[step.id] || '').trim();
     if (newStatus === 'completed' && !noteBeforeValidation) {
       return toast.error('Ajoutez une note de suivi avant de valider cette étape');
@@ -247,6 +254,72 @@ export default function ClientDetail() {
     if (error) return toast.error(error.message);
     toast.success('Étape mise à jour');
     load();
+  };
+
+  const addClientStep = async () => {
+    if (!canManageSteps) return toast.error("Seul un admin peut modifier les étapes");
+    const stepName = (newStepForm.step_name ?? '').trim();
+    if (!stepName) return toast.error('Nom étape requis');
+    const nextOrder = steps.length > 0 ? Math.max(...steps.map(s => Number(s.step_order) || 0)) + 1 : 1;
+    const { error } = await supabase.from('client_steps').insert({
+      client_id: client.id,
+      step_name: stepName,
+      step_order: nextOrder,
+      status: 'todo',
+      due_date: newStepForm.due_date || null,
+      notes: newStepForm.notes?.trim() || null,
+    });
+    if (error) return toast.error(error.message);
+    toast.success('Étape ajoutée');
+    setNewStepForm({ step_name: '', due_date: '', notes: '' });
+    load();
+  };
+
+  const normalizeClientStepOrders = async (orderedSteps: any[]) => {
+    for (let i = 0; i < orderedSteps.length; i += 1) {
+      const step = orderedSteps[i];
+      const nextOrder = i + 1;
+      if ((Number(step.step_order) || 0) !== nextOrder) {
+        const { error } = await supabase.from('client_steps').update({ step_order: nextOrder }).eq('id', step.id);
+        if (error) throw error;
+      }
+    }
+  };
+
+  const moveClientStep = async (stepId: string, direction: 'up' | 'down') => {
+    if (!canManageSteps) return toast.error("Seul un admin peut modifier les étapes");
+    const sorted = [...steps].sort((a, b) => (a.step_order ?? 0) - (b.step_order ?? 0));
+    const idx = sorted.findIndex(s => s.id === stepId);
+    if (idx < 0) return;
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= sorted.length) return;
+    [sorted[idx], sorted[swapIdx]] = [sorted[swapIdx], sorted[idx]];
+    try {
+      await normalizeClientStepOrders(sorted);
+      toast.success('Ordre des étapes mis à jour');
+      load();
+    } catch (err: any) {
+      toast.error(err.message || 'Impossible de changer l’ordre');
+    }
+  };
+
+  const deleteClientStep = async (stepId: string) => {
+    if (!canManageSteps) return toast.error("Seul un admin peut modifier les étapes");
+    const ok = window.confirm('Supprimer cette étape ?');
+    if (!ok) return;
+    const { error } = await supabase.from('client_steps').delete().eq('id', stepId);
+    if (error) return toast.error(error.message);
+    const remaining = steps
+      .filter(s => s.id !== stepId)
+      .sort((a, b) => (a.step_order ?? 0) - (b.step_order ?? 0));
+    try {
+      await normalizeClientStepOrders(remaining);
+      toast.success('Étape supprimée');
+      load();
+    } catch (err: any) {
+      toast.error(err.message || 'Étape supprimée, mais ordre non recalculé');
+      load();
+    }
   };
 
   const updatePaymentStatus = async (paymentId: string, newStatus: string) => {
@@ -307,11 +380,11 @@ export default function ClientDetail() {
 
   return (
     <div className="space-y-6 max-w-[1400px] mx-auto">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <Button variant="ghost" size="sm" onClick={() => navigate('/clients')} className="-ml-2">
           <ArrowLeft className="w-4 h-4 mr-1.5" />{t('common.back')}
         </Button>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 self-start sm:self-auto">
           {isAdmin && (
             <Button onClick={handleDeleteClient} variant="destructive" size="sm" disabled={deleting}>
               <Trash2 className="w-4 h-4 mr-1.5" />{deleting ? 'Suppression...' : 'Supprimer'}
@@ -349,7 +422,7 @@ export default function ClientDetail() {
               <span className="flex items-center gap-1.5"><User className="w-3.5 h-3.5" />Assigné: {userNameById(client.agent_id)}</span>
             </div>
           </div>
-          <div className="flex gap-6 lg:border-l lg:border-white/15 lg:pl-6">
+          <div className="flex flex-wrap gap-4 sm:gap-6 lg:border-l lg:border-white/15 lg:pl-6">
             <div>
               <div className="text-[10px] uppercase tracking-wider text-white/50 font-semibold">Contrat</div>
               <div className="font-display font-bold text-xl">{formatCurrency(totalContract)}</div>
@@ -367,7 +440,7 @@ export default function ClientDetail() {
       </motion.div>
 
       <Tabs defaultValue="info">
-        <TabsList className="bg-card border border-border">
+        <TabsList className="bg-card border border-border w-full justify-start overflow-x-auto">
           <TabsTrigger value="info"><User className="w-4 h-4 mr-1.5" />{t('clients.personalInfo')}</TabsTrigger>
           <TabsTrigger value="procedure"><FileText className="w-4 h-4 mr-1.5" />{t('clients.procedure')}</TabsTrigger>
           <TabsTrigger value="finance"><Wallet className="w-4 h-4 mr-1.5" />{t('clients.finance')}</TabsTrigger>
@@ -427,13 +500,49 @@ export default function ClientDetail() {
         </TabsContent>
 
         <TabsContent value="procedure" className="mt-5">
-          <div className="vayase-card p-6">
+          <div className="vayase-card p-4 sm:p-6">
             <div className="flex items-center justify-between mb-6">
               <h3 className="font-display font-semibold text-base">{t('procedures.timeline')}</h3>
               <div className="text-xs text-muted-foreground">
                 {completedSteps} / {steps.length} étapes complétées
               </div>
             </div>
+
+            {canManageSteps && (
+              <div className="mb-6 rounded-lg border border-border p-3 sm:p-4 space-y-3">
+                <div className="font-semibold text-sm">Ajouter une étape au client</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label>Nom étape *</Label>
+                    <Input
+                      value={newStepForm.step_name}
+                      onChange={e => setNewStepForm({ ...newStepForm, step_name: e.target.value })}
+                      placeholder="Ex: Dépôt dossier ambassade"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Date d'échéance</Label>
+                    <Input
+                      type="date"
+                      value={newStepForm.due_date}
+                      onChange={e => setNewStepForm({ ...newStepForm, due_date: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label>Notes</Label>
+                  <Textarea
+                    rows={2}
+                    value={newStepForm.notes}
+                    onChange={e => setNewStepForm({ ...newStepForm, notes: e.target.value })}
+                    placeholder="Détails optionnels"
+                  />
+                </div>
+                <Button size="sm" variant="outline" onClick={addClientStep}>
+                  <Plus className="w-4 h-4 mr-1.5" />Ajouter l'étape
+                </Button>
+              </div>
+            )}
 
             {steps.length === 0 && (
               <div className="text-center py-12 text-muted-foreground text-sm">Aucune étape configurée</div>
@@ -463,9 +572,21 @@ export default function ClientDetail() {
                             </div>
                           )}
                         </div>
-                        <Badge variant="outline" className={cn('text-[10px] uppercase tracking-wider', stepColors[step.status])}>
-                          {t(`procedures.status.${step.status}`)}
-                        </Badge>
+                        <div className="flex items-center gap-1.5">
+                          {canManageSteps && (
+                            <>
+                              <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => moveClientStep(step.id, 'up')}>
+                                <ArrowUp className="w-3.5 h-3.5" />
+                              </Button>
+                              <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => moveClientStep(step.id, 'down')}>
+                                <ArrowDown className="w-3.5 h-3.5" />
+                              </Button>
+                            </>
+                          )}
+                          <Badge variant="outline" className={cn('text-[10px] uppercase tracking-wider', stepColors[step.status])}>
+                            {t(`procedures.status.${step.status}`)}
+                          </Badge>
+                        </div>
                       </div>
                       {step.notes && <p className="text-xs text-muted-foreground mb-2">{step.notes}</p>}
                       <div className="space-y-2 mb-3">
@@ -476,7 +597,7 @@ export default function ClientDetail() {
                           </div>
                         ))}
                       </div>
-                      {canEdit && (
+                      {canManageSteps && (
                         <div className="flex gap-2 mb-3">
                           <Input
                             value={stepNoteInputs[step.id] ?? ''}
@@ -493,8 +614,16 @@ export default function ClientDetail() {
                           </Button>
                         </div>
                       )}
-                      {canEdit && (
+                      {canManageSteps && (
                         <div className="flex flex-wrap gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => deleteClientStep(step.id)}
+                            className="h-7 text-[10px] uppercase tracking-wider text-destructive border-destructive/30"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 mr-1" />Supprimer
+                          </Button>
                           {STEP_STATUSES.map(s => (
                             <Button key={s} size="sm" variant={step.status === s ? 'default' : 'outline'}
                               onClick={() => updateStepStatus(step, s)}
@@ -629,7 +758,11 @@ export default function ClientDetail() {
             <div className="space-y-2"><Label>Programme</Label>
               <Input value={editForm.program ?? ''} onChange={e => setEditForm({ ...editForm, program: e.target.value })} /></div>
             <div className="sm:col-span-2 space-y-2"><Label>Procédure (modèle)</Label>
-              <Select value={editForm.procedure_template_id ?? 'none'} onValueChange={v => setEditForm({ ...editForm, procedure_template_id: v })}>
+              <Select
+                value={editForm.procedure_template_id ?? 'none'}
+                onValueChange={v => setEditForm({ ...editForm, procedure_template_id: v })}
+                disabled={!canManageProcedure}
+              >
                 <SelectTrigger><SelectValue placeholder="Choisir une procédure" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Aucune</SelectItem>

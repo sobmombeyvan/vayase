@@ -184,7 +184,7 @@ export default function Procedures() {
   };
 
   const updateStepStatus = async (step: any, newStatus: string) => {
-    if (!canEdit) return toast.error("Vous n'avez pas les permissions");
+    if (!isAdmin) return toast.error("Seul un admin peut modifier les étapes");
     const noteBeforeValidation = (stepNoteInputs[step.id] || '').trim();
     if (newStatus === 'completed' && !noteBeforeValidation) {
       return toast.error('Ajoutez une note de suivi avant de valider cette étape');
@@ -402,7 +402,7 @@ export default function Procedures() {
                     {t(`procedures.status.${step.status}`)}
                   </Badge>
                 </div>
-                {canEdit && (
+                {isAdmin && (
                   <>
                     <div className="flex gap-2 mb-2">
                       <Input

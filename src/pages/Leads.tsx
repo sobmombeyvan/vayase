@@ -61,10 +61,34 @@ export default function Leads() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Lead>(emptyLead);
   const [saving, setSaving] = useState(false);
+  const [hasSourceOtherColumn, setHasSourceOtherColumn] = useState(true);
+
+  const isMissingSourceOtherError = (message?: string | null) =>
+    (message || '').toLowerCase().includes("could not find the 'source_other' column of 'leads'");
 
   const loadLeads = () => {
     supabase.from('leads').select('*').order('created_at', { ascending: false })
-      .then(({ data }) => setLeads(data ?? []));
+      .then(async ({ data, error }) => {
+        if (error && isMissingSourceOtherError(error.message)) {
+          setHasSourceOtherColumn(false);
+          const fallback = await supabase
+            .from('leads')
+            .select('id, full_name, email, phone, source, status, destination_country, budget, interest_level, notes, assigned_to, converted_client_id, created_at')
+            .order('created_at', { ascending: false });
+          if (fallback.error) {
+            toast.error(fallback.error.message);
+            return;
+          }
+          setLeads((fallback.data ?? []).map((lead: any) => ({ ...lead, source_other: null })));
+          return;
+        }
+        if (error) {
+          toast.error(error.message);
+          return;
+        }
+        setHasSourceOtherColumn(true);
+        setLeads(data ?? []);
+      });
   };
 
   useEffect(() => { loadLeads(); }, []);
@@ -107,18 +131,29 @@ export default function Leads() {
       email: editing.email || null,
       phone: editing.phone || null,
       source: editing.source,
-      source_other: editing.source === 'other' ? (editing.source_other || null) : null,
       status: editing.status,
       destination_country: editing.destination_country || null,
       budget: editing.budget ? Number(editing.budget) : null,
       interest_level: editing.interest_level ?? 3,
       notes: editing.notes || null,
     };
+    if (hasSourceOtherColumn) {
+      payload.source_other = editing.source === 'other' ? (editing.source_other || null) : null;
+    }
     let error;
     if (editing.id) {
       ({ error } = await supabase.from('leads').update(payload).eq('id', editing.id));
     } else {
       ({ error } = await supabase.from('leads').insert(payload));
+    }
+    if (error && isMissingSourceOtherError(error.message) && hasSourceOtherColumn) {
+      delete payload.source_other;
+      setHasSourceOtherColumn(false);
+      if (editing.id) {
+        ({ error } = await supabase.from('leads').update(payload).eq('id', editing.id));
+      } else {
+        ({ error } = await supabase.from('leads').insert(payload));
+      }
     }
     setSaving(false);
     if (error) return toast.error(error.message);
