@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { DESTINATION_COUNTRIES } from '@/lib/destinations';
 
 const statusStyles: Record<string, string> = {
   vip: 'bg-gradient-accent text-vayase-night border-0',
@@ -59,6 +60,7 @@ export default function ClientDetail() {
   const [templates, setTemplates] = useState<any[]>([]);
   const [stepNotes, setStepNotes] = useState<Record<string, any[]>>({});
   const [stepNoteInputs, setStepNoteInputs] = useState<Record<string, string>>({});
+  const [sourceLead, setSourceLead] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   const [editOpen, setEditOpen] = useState(false);
@@ -82,13 +84,15 @@ export default function ClientDetail() {
       supabase.from('profiles').select('id, full_name').order('full_name'),
       supabase.from('client_step_notes').select('*').eq('client_id', id).order('created_at', { ascending: false }),
       supabase.from('procedure_templates').select('id, name, destination_country, visa_type, is_active').eq('is_active', true).order('name'),
-    ]).then(([cRes, sRes, ctRes, pRes, uRes, nRes, tplRes]) => {
+      supabase.from('leads').select('id, full_name, converted_by_user_id, referred_by_user_id').eq('converted_client_id', id).maybeSingle(),
+    ]).then(([cRes, sRes, ctRes, pRes, uRes, nRes, tplRes, leadRes]) => {
       setClient(cRes.data);
       setSteps(sRes.data ?? []);
       setContracts(ctRes.data ?? []);
       setPayments(pRes.data ?? []);
       setUsers(uRes.data ?? []);
       setTemplates(tplRes.data ?? []);
+      setSourceLead(leadRes.data ?? null);
       const groupedNotes = (nRes.data ?? []).reduce((acc: Record<string, any[]>, note: any) => {
         if (!acc[note.step_id]) acc[note.step_id] = [];
         acc[note.step_id].push(note);
@@ -110,6 +114,8 @@ export default function ClientDetail() {
   const totalContract = contracts.reduce((s, c) => s + Number(c.total_amount), 0);
   const totalPaid = payments.filter(p => p.status === 'paid').reduce((s, p) => s + Number(p.amount), 0);
   const totalPending = payments.filter(p => p.status === 'pending' || p.status === 'overdue').reduce((s, p) => s + Number(p.amount), 0);
+  const amountLeftToPay = Math.max(0, totalContract - totalPaid);
+  const paymentProgress = totalContract > 0 ? Math.min(100, (totalPaid / totalContract) * 100) : 0;
   const completedSteps = steps.filter(s => s.status === 'completed').length;
 
   const openEdit = () => {
@@ -129,6 +135,7 @@ export default function ClientDetail() {
       status: client.status ?? 'standard',
       agent_id: client.agent_id ?? null,
       procedure_template_id: client.procedure_template_id ?? 'none',
+      referred_by_user_id: client.referred_by_user_id ?? 'none',
       notes: client.notes ?? '',
     });
     setEditOpen(true);
@@ -432,6 +439,10 @@ export default function ClientDetail() {
               <div className="font-display font-bold text-xl text-vayase-accent">{formatCurrency(totalPaid)}</div>
             </div>
             <div>
+              <div className="text-[10px] uppercase tracking-wider text-white/50 font-semibold">Reste à payer</div>
+              <div className="font-display font-bold text-xl text-warning">{formatCurrency(amountLeftToPay)}</div>
+            </div>
+            <div>
               <div className="text-[10px] uppercase tracking-wider text-white/50 font-semibold">Étapes</div>
               <div className="font-display font-bold text-xl">{completedSteps}/{steps.length || '—'}</div>
             </div>
@@ -482,6 +493,10 @@ export default function ClientDetail() {
                   { label: 'Frais à payer', value: client.total_fees_due ? formatCurrency(Number(client.total_fees_due)) : '—' },
                   { label: 'Urgence', value: client.urgency || '—' },
                   { label: 'Date inscription', value: new Date(client.created_at).toLocaleDateString('fr-FR') },
+                  { label: 'Client référé par', value: client.referred_by_user_id ? userNameById(client.referred_by_user_id) : '—' },
+                  { label: 'Converti depuis lead', value: sourceLead?.full_name || '—' },
+                  { label: 'Converti par', value: sourceLead?.converted_by_user_id ? userNameById(sourceLead.converted_by_user_id) : '—' },
+                  { label: 'Référé par', value: sourceLead?.referred_by_user_id ? userNameById(sourceLead.referred_by_user_id) : '—' },
                 ].map((row, i) => (
                   <div key={i} className="flex items-center justify-between py-2 border-b border-border last:border-0">
                     <dt className="text-xs text-muted-foreground uppercase tracking-wider">{row.label}</dt>
@@ -644,7 +659,7 @@ export default function ClientDetail() {
         </TabsContent>
 
         <TabsContent value="finance" className="mt-5 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <div className="vayase-card p-5">
               <div className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-1">Total contrat</div>
               <div className="font-display font-bold text-2xl">{formatCurrency(totalContract)}</div>
@@ -654,8 +669,23 @@ export default function ClientDetail() {
               <div className="font-display font-bold text-2xl text-success">{formatCurrency(totalPaid)}</div>
             </div>
             <div className="vayase-card p-5">
-              <div className="text-xs uppercase tracking-wider text-warning font-semibold mb-1">En attente</div>
-              <div className="font-display font-bold text-2xl text-warning">{formatCurrency(totalPending)}</div>
+              <div className="text-xs uppercase tracking-wider text-warning font-semibold mb-1">Reste à payer</div>
+              <div className="font-display font-bold text-2xl text-warning">{formatCurrency(amountLeftToPay)}</div>
+            </div>
+            <div className="vayase-card p-5">
+              <div className="flex items-center justify-between mb-1">
+                <div className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Progression paiement</div>
+                <div className="text-xs font-semibold text-foreground">{paymentProgress.toFixed(0)}%</div>
+              </div>
+              <div className="h-2 bg-secondary rounded-full overflow-hidden mt-3">
+                <div
+                  className="h-full bg-gradient-accent rounded-full transition-all duration-700"
+                  style={{ width: `${paymentProgress}%` }}
+                />
+              </div>
+              <div className="text-[11px] text-muted-foreground mt-2">
+                En attente (paiements): {formatCurrency(totalPending)}
+              </div>
             </div>
           </div>
 
@@ -752,7 +782,16 @@ export default function ClientDetail() {
             <div className="sm:col-span-2 space-y-2"><Label>Adresse</Label>
               <Input value={editForm.address ?? ''} onChange={e => setEditForm({ ...editForm, address: e.target.value })} /></div>
             <div className="space-y-2"><Label>Destination</Label>
-              <Input value={editForm.destination_country ?? ''} onChange={e => setEditForm({ ...editForm, destination_country: e.target.value })} /></div>
+              <Select value={editForm.destination_country || 'none'} onValueChange={v => setEditForm({ ...editForm, destination_country: v === 'none' ? '' : v })}>
+                <SelectTrigger><SelectValue placeholder="Choisir une destination" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Aucune</SelectItem>
+                  {DESTINATION_COUNTRIES.map((country) => (
+                    <SelectItem key={country} value={country}>{country}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-2"><Label>Type de visa</Label>
               <Input value={editForm.visa_type ?? ''} onChange={e => setEditForm({ ...editForm, visa_type: e.target.value })} /></div>
             <div className="space-y-2"><Label>Programme</Label>
@@ -788,6 +827,17 @@ export default function ClientDetail() {
             {isAdmin && (
               <div className="sm:col-span-2 space-y-2"><Label>Utilisateur assigné</Label>
                 <Select value={editForm.agent_id ?? 'none'} onValueChange={v => setEditForm({ ...editForm, agent_id: v === 'none' ? null : v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Aucun</SelectItem>
+                    {users.map(u => <SelectItem key={u.id} value={u.id}>{u.full_name || u.id}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {isAdmin && (
+              <div className="sm:col-span-2 space-y-2"><Label>Référé par</Label>
+                <Select value={editForm.referred_by_user_id ?? 'none'} onValueChange={v => setEditForm({ ...editForm, referred_by_user_id: v === 'none' ? null : v })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Aucun</SelectItem>

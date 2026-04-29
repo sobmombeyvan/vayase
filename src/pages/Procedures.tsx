@@ -14,6 +14,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { DESTINATION_COUNTRIES } from '@/lib/destinations';
 
 const STATUSES = ['todo', 'in_progress', 'completed', 'blocked'] as const;
 
@@ -82,6 +83,21 @@ export default function Procedures() {
     setTemplateSteps(data ?? []);
   };
 
+  const applyTemplateToForm = (tplId: string) => {
+    if (!tplId || tplId === 'none') {
+      setTemplateForm({ name: '', destination_country: '', visa_type: '' });
+      return;
+    }
+    const tpl = templates.find((t) => t.id === tplId);
+    if (!tpl) return;
+    setTemplateForm({
+      name: tpl.name ?? '',
+      destination_country: tpl.destination_country ?? '',
+      visa_type: tpl.visa_type ?? '',
+      is_active: tpl.is_active ?? true,
+    });
+  };
+
   const createTemplate = async () => {
     if (!isAdmin) return toast.error("Permissions insuffisantes");
     if (!templateForm.name.trim()) return toast.error('Nom requis');
@@ -96,7 +112,43 @@ export default function Procedures() {
     setTemplateForm({ name: '', destination_country: '', visa_type: '' });
     load();
     setSelectedTemplateId(data.id);
+    applyTemplateToForm(data.id);
     await loadTemplateSteps(data.id);
+  };
+
+  const updateTemplate = async () => {
+    if (!isAdmin) return toast.error("Permissions insuffisantes");
+    if (selectedTemplateId === 'none') return toast.error('Choisis une procédure');
+    if (!templateForm.name?.trim()) return toast.error('Nom requis');
+    const { error } = await supabase
+      .from('procedure_templates')
+      .update({
+        name: templateForm.name.trim(),
+        destination_country: templateForm.destination_country || null,
+        visa_type: templateForm.visa_type || null,
+        is_active: templateForm.is_active ?? true,
+      })
+      .eq('id', selectedTemplateId);
+    if (error) return toast.error(error.message);
+    toast.success('Procédure mise à jour');
+    load();
+  };
+
+  const deleteTemplate = async () => {
+    if (!isAdmin) return toast.error("Permissions insuffisantes");
+    if (selectedTemplateId === 'none') return toast.error('Choisis une procédure');
+    const ok = window.confirm('Supprimer cette procédure ? Toutes ses étapes modèles seront aussi supprimées.');
+    if (!ok) return;
+    const { error } = await supabase
+      .from('procedure_templates')
+      .delete()
+      .eq('id', selectedTemplateId);
+    if (error) return toast.error(error.message);
+    toast.success('Procédure supprimée');
+    setSelectedTemplateId('none');
+    setTemplateSteps([]);
+    setTemplateForm({ name: '', destination_country: '', visa_type: '' });
+    load();
   };
 
   const addTemplateStep = async () => {
@@ -227,7 +279,7 @@ export default function Procedures() {
             <div className="space-y-3">
               <div className="space-y-2">
                 <Label>Procédure existante</Label>
-                <Select value={selectedTemplateId} onValueChange={async (v) => { setSelectedTemplateId(v); await loadTemplateSteps(v); }}>
+                <Select value={selectedTemplateId} onValueChange={async (v) => { setSelectedTemplateId(v); applyTemplateToForm(v); await loadTemplateSteps(v); }}>
                   <SelectTrigger><SelectValue placeholder="Choisir..." /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">—</SelectItem>
@@ -241,15 +293,47 @@ export default function Procedures() {
               </div>
 
               <div className="rounded-lg border border-border p-3">
-                <div className="font-semibold text-sm mb-2">Créer une nouvelle procédure</div>
+                <div className="font-semibold text-sm mb-2">
+                  {selectedTemplateId === 'none' ? 'Créer une nouvelle procédure' : 'Modifier la procédure sélectionnée'}
+                </div>
                 <div className="space-y-2">
                   <Label>Nom *</Label>
                   <Input value={templateForm.name} onChange={e => setTemplateForm({ ...templateForm, name: e.target.value })} />
                   <Label>Pays</Label>
-                  <Input value={templateForm.destination_country} onChange={e => setTemplateForm({ ...templateForm, destination_country: e.target.value })} />
+                  <Select
+                    value={templateForm.destination_country || 'none'}
+                    onValueChange={(v) => setTemplateForm({ ...templateForm, destination_country: v === 'none' ? '' : v })}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Choisir une destination" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Aucun</SelectItem>
+                      {DESTINATION_COUNTRIES.map((country) => (
+                        <SelectItem key={country} value={country}>{country}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <Label>Type procédure</Label>
                   <Input value={templateForm.visa_type} onChange={e => setTemplateForm({ ...templateForm, visa_type: e.target.value })} />
-                  <Button onClick={createTemplate} className="w-full bg-gradient-accent text-vayase-night font-semibold">Créer</Button>
+                  <div className="space-y-2 pt-1">
+                    {selectedTemplateId !== 'none' && (
+                      <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+                        <Label className="mb-0">Procédure active</Label>
+                        <input
+                          type="checkbox"
+                          checked={!!templateForm.is_active}
+                          onChange={(e) => setTemplateForm({ ...templateForm, is_active: e.target.checked })}
+                        />
+                      </div>
+                    )}
+                    {selectedTemplateId === 'none' ? (
+                      <Button onClick={createTemplate} className="w-full bg-gradient-accent text-vayase-night font-semibold">Créer</Button>
+                    ) : (
+                      <div className="flex gap-2">
+                        <Button onClick={updateTemplate} className="flex-1 bg-gradient-accent text-vayase-night font-semibold">Modifier</Button>
+                        <Button onClick={deleteTemplate} variant="destructive" className="flex-1">Supprimer</Button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

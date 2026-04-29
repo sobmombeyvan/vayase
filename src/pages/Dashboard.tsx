@@ -19,7 +19,7 @@ export default function Dashboard() {
   const isSupport = hasRole('support');
   const [stats, setStats] = useState({
     leads: 0, clients: 0, monthlyRevenue: 0, pendingPayments: 0,
-    activeFiles: 0, approvedFiles: 0, conversionRate: 0,
+    activeFiles: 0, approvedFiles: 0, conversionRate: 0, myConvertedClients: 0,
   });
   const [revenueData, setRevenueData] = useState<{ month: string; revenue: number }[]>([]);
   const [countryData, setCountryData] = useState<{ name: string; value: number }[]>([]);
@@ -28,7 +28,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     const load = async () => {
-      const leadsQ = supabase.from('leads').select('id, status, created_at');
+      const leadsQ = supabase.from('leads').select('id, status, created_at, converted_by_user_id');
       const clientsQ = supabase.from('clients').select('id, full_name, destination_country, created_at, status, agent_id');
       const paymentsQ = supabase.from('payments').select('amount, status, payment_date, created_at');
       const stepsQ = supabase.from('client_steps').select('id, status, client_id');
@@ -55,6 +55,7 @@ export default function Dashboard() {
         .reduce((s, p) => s + Number(p.amount), 0);
       const converted = leads.filter(l => l.status === 'converted').length;
       const conversionRate = leads.length ? (converted / leads.length) * 100 : 0;
+      const myConvertedClients = user?.id ? leads.filter(l => l.status === 'converted' && l.converted_by_user_id === user.id).length : 0;
 
       setStats({
         leads: leads.length,
@@ -64,6 +65,7 @@ export default function Dashboard() {
         activeFiles: steps.filter(s => s.status === 'in_progress').length,
         approvedFiles: steps.filter(s => s.status === 'completed' || s.status === 'validated').length,
         conversionRate,
+        myConvertedClients,
       });
 
       // Revenue evolution (last 6 months)
@@ -133,7 +135,7 @@ export default function Dashboard() {
         <KPICard label={isSupport ? 'Dossiers suivis' : t('dashboard.activeFiles')} value={stats.activeFiles} icon={FileCheck} accent="default" />
         <KPICard label={t('dashboard.conversionRate')} value={stats.conversionRate.toFixed(1)} suffix="%" icon={Target} accent="success" />
         <KPICard label={t('dashboard.approvedFiles')} value={stats.approvedFiles} icon={CheckCircle2} accent="success" />
-        <KPICard label={isManager ? 'Performance equipe' : 'Score moyen'} value={Math.min(100, Math.round(stats.conversionRate))} suffix="/100" icon={TrendingUp} accent="default" />
+        <KPICard label="Mes leads convertis" value={stats.myConvertedClients} icon={TrendingUp} accent="default" />
       </div>
 
       {/* Charts row 1 */}

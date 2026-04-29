@@ -320,6 +320,7 @@ export type Database = {
           profession: string | null
           program: string | null
           procedure_template_id: string | null
+          referred_by_user_id: string | null
           status: Database["public"]["Enums"]["client_status"]
           total_fees_due: number | null
           updated_at: string
@@ -343,6 +344,7 @@ export type Database = {
           profession?: string | null
           program?: string | null
           procedure_template_id?: string | null
+          referred_by_user_id?: string | null
           status?: Database["public"]["Enums"]["client_status"]
           total_fees_due?: number | null
           updated_at?: string
@@ -366,13 +368,22 @@ export type Database = {
           profession?: string | null
           program?: string | null
           procedure_template_id?: string | null
+          referred_by_user_id?: string | null
           status?: Database["public"]["Enums"]["client_status"]
           total_fees_due?: number | null
           updated_at?: string
           urgency?: string | null
           visa_type?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "clients_referred_by_user_id_fkey"
+            columns: ["referred_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       contracts: {
         Row: {
@@ -475,6 +486,7 @@ export type Database = {
         Row: {
           assigned_to: string | null
           budget: number | null
+          converted_by_user_id: string | null
           converted_client_id: string | null
           created_at: string
           destination_country: string | null
@@ -484,6 +496,7 @@ export type Database = {
           interest_level: number | null
           notes: string | null
           phone: string | null
+          referred_by_user_id: string | null
           source_other: string | null
           source: Database["public"]["Enums"]["lead_source"]
           status: Database["public"]["Enums"]["lead_status"]
@@ -492,6 +505,7 @@ export type Database = {
         Insert: {
           assigned_to?: string | null
           budget?: number | null
+          converted_by_user_id?: string | null
           converted_client_id?: string | null
           created_at?: string
           destination_country?: string | null
@@ -501,6 +515,7 @@ export type Database = {
           interest_level?: number | null
           notes?: string | null
           phone?: string | null
+          referred_by_user_id?: string | null
           source_other?: string | null
           source?: Database["public"]["Enums"]["lead_source"]
           status?: Database["public"]["Enums"]["lead_status"]
@@ -509,6 +524,7 @@ export type Database = {
         Update: {
           assigned_to?: string | null
           budget?: number | null
+          converted_by_user_id?: string | null
           converted_client_id?: string | null
           created_at?: string
           destination_country?: string | null
@@ -518,12 +534,28 @@ export type Database = {
           interest_level?: number | null
           notes?: string | null
           phone?: string | null
+          referred_by_user_id?: string | null
           source_other?: string | null
           source?: Database["public"]["Enums"]["lead_source"]
           status?: Database["public"]["Enums"]["lead_status"]
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "leads_converted_by_user_id_fkey"
+            columns: ["converted_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_referred_by_user_id_fkey"
+            columns: ["referred_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       notifications: {
         Row: {

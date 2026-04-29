@@ -8,11 +8,14 @@ import { generateClientsReport, generateFinanceReport, exportToExcel } from '@/l
 import { BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer, XAxis, YAxis, Tooltip as ReTooltip, CartesianGrid } from 'recharts';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 
 const COLORS = ['#49BFFF', '#7C3AED', '#10B981', '#F59E0B', '#EF4444', '#EC4899'];
 
 export default function Reports() {
-  const [data, setData] = useState<any>({ clients: [], payments: [], contracts: [] });
+  const { user, hasAnyRole } = useAuth();
+  const isAdminView = hasAnyRole(['super_admin', 'admin']);
+  const [data, setData] = useState<any>({ clients: [], payments: [], contracts: [], leads: [], users: [] });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -22,14 +25,24 @@ export default function Reports() {
         supabase.from('payments').select('*'),
         supabase.from('contracts').select('*'),
       ]);
-      setData({ clients: c.data || [], payments: p.data || [], contracts: ct.data || [] });
+      const [leadsRes, usersRes] = await Promise.all([
+        supabase.from('leads').select('id, status, referred_by_user_id, converted_by_user_id'),
+        supabase.from('profiles').select('id, full_name'),
+      ]);
+      setData({
+        clients: c.data || [],
+        payments: p.data || [],
+        contracts: ct.data || [],
+        leads: leadsRes.data || [],
+        users: usersRes.data || [],
+      });
       setLoading(false);
     })();
   }, []);
 
   if (loading) return <Card className="p-12 text-center">Chargement...</Card>;
 
-  const { clients, payments, contracts } = data;
+  const { clients, payments, contracts, leads, users } = data;
 
   // Aggregations
   const byCountry = clients.reduce((acc: Record<string, number>, c: any) => {
@@ -61,6 +74,35 @@ export default function Reports() {
     paid: payments.filter((p: any) => p.payment_date?.startsWith(m.key) && p.status === 'paid').reduce((s: number, p: any) => s + Number(p.amount), 0),
     pending: payments.filter((p: any) => p.due_date?.startsWith(m.key) && p.status === 'pending').reduce((s: number, p: any) => s + Number(p.amount), 0),
   }));
+
+  const userNames = new Map<string, string>(users.map((u: any) => [u.id, u.full_name || u.id]));
+  const byReferrer = leads.reduce((acc: Record<string, number>, lead: any) => {
+    if (lead.status !== 'converted' || !lead.referred_by_user_id) return acc;
+    acc[lead.referred_by_user_id] = (acc[lead.referred_by_user_id] || 0) + 1;
+    return acc;
+  }, {});
+  const referralLeaderboard = Object.entries(byReferrer)
+    .map(([userId, conversions]) => ({
+      userId,
+      name: userNames.get(userId) || userId,
+      conversions,
+    }))
+    .sort((a, b) => b.conversions - a.conversions);
+
+  const byConverter = leads.reduce((acc: Record<string, number>, lead: any) => {
+    if (lead.status !== 'converted' || !lead.converted_by_user_id) return acc;
+    acc[lead.converted_by_user_id] = (acc[lead.converted_by_user_id] || 0) + 1;
+    return acc;
+  }, {});
+  const converterLeaderboard = Object.entries(byConverter)
+    .map(([userId, conversions]) => ({
+      userId,
+      name: userNames.get(userId) || userId,
+      conversions,
+    }))
+    .sort((a, b) => b.conversions - a.conversions);
+  const myConversions = user?.id ? (byConverter[user.id] || 0) : 0;
+  const myReferralConversions = user?.id ? (byReferrer[user.id] || 0) : 0;
 
   const exportClientsExcel = () => {
     exportToExcel(clients.map((c: any) => ({
@@ -103,6 +145,16 @@ export default function Reports() {
             <p className="text-xl font-display font-bold mt-1">{s.value}</p>
           </Card>
         ))}
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card className="p-4">
+          <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Mes leads convertis</p>
+          <p className="text-2xl font-display font-bold mt-1">{myConversions}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Mes referrals convertis</p>
+          <p className="text-2xl font-display font-bold mt-1">{myReferralConversions}</p>
+        </Card>
       </div>
 
       <Tabs defaultValue="exports">
@@ -171,6 +223,51 @@ export default function Reports() {
               </BarChart>
             </ResponsiveContainer>
           </Card>
+
+          <Card className="p-5 md:col-span-2">
+            <h3 className="font-display font-semibold mb-4">Conversions par référent</h3>
+            {referralLeaderboard.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Aucune conversion liée à un référent pour le moment.</p>
+            ) : (
+              <div className="space-y-2">
+                {referralLeaderboard.map((row, index) => (
+                  <div
+                    key={row.userId}
+                    className="flex items-center justify-between rounded-lg border border-border px-3 py-2"
+                  >
+                    <p className="text-sm">
+                      <span className="text-muted-foreground mr-2">#{index + 1}</span>
+                      <span className="font-medium">{row.name}</span>
+                    </p>
+                    <p className="text-sm font-semibold">{row.conversions} conversion{row.conversions > 1 ? 's' : ''}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+          {isAdminView && (
+            <Card className="p-5 md:col-span-2">
+              <h3 className="font-display font-semibold mb-4">Conversions par convertisseur</h3>
+              {converterLeaderboard.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Aucune conversion enregistrée pour le moment.</p>
+              ) : (
+                <div className="space-y-2">
+                  {converterLeaderboard.map((row, index) => (
+                    <div
+                      key={row.userId}
+                      className="flex items-center justify-between rounded-lg border border-border px-3 py-2"
+                    >
+                      <p className="text-sm">
+                        <span className="text-muted-foreground mr-2">#{index + 1}</span>
+                        <span className="font-medium">{row.name}</span>
+                      </p>
+                      <p className="text-sm font-semibold">{row.conversions} conversion{row.conversions > 1 ? 's' : ''}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          )}
         </TabsContent>
       </Tabs>
     </div>

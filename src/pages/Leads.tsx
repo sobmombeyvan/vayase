@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { DESTINATION_COUNTRIES } from '@/lib/destinations';
 
 const sourceIcons: Record<string, any> = {
   facebook: Facebook, whatsapp: MessageCircle, website: Globe, instagram: Instagram, referral: UsersIcon, other: Globe,
@@ -44,6 +45,7 @@ type Lead = {
   assigned_to?: string | null;
   converted_client_id?: string | null;
   source_other?: string | null;
+  referred_by_user_id?: string | null;
 };
 
 const emptyLead: Lead = {
@@ -53,7 +55,7 @@ const emptyLead: Lead = {
 
 export default function Leads() {
   const { t } = useTranslation();
-  const { hasAnyRole } = useAuth();
+  const { hasAnyRole, user } = useAuth();
   const canEdit = hasAnyRole(['super_admin', 'admin', 'agent', 'manager']);
   const [leads, setLeads] = useState<any[]>([]);
   const [search, setSearch] = useState('');
@@ -62,15 +64,24 @@ export default function Leads() {
   const [editing, setEditing] = useState<Lead>(emptyLead);
   const [saving, setSaving] = useState(false);
   const [hasSourceOtherColumn, setHasSourceOtherColumn] = useState(true);
+  const [hasReferralColumn, setHasReferralColumn] = useState(true);
+  const [hasConvertedByColumn, setHasConvertedByColumn] = useState(true);
+  const [users, setUsers] = useState<any[]>([]);
 
   const isMissingSourceOtherError = (message?: string | null) =>
     (message || '').toLowerCase().includes("could not find the 'source_other' column of 'leads'");
+  const isMissingReferralColumnError = (message?: string | null) =>
+    (message || '').toLowerCase().includes("could not find the 'referred_by_user_id' column of 'leads'");
+  const isMissingConvertedByColumnError = (message?: string | null) =>
+    (message || '').toLowerCase().includes("could not find the 'converted_by_user_id' column of 'leads'");
 
   const loadLeads = () => {
     supabase.from('leads').select('*').order('created_at', { ascending: false })
       .then(async ({ data, error }) => {
-        if (error && isMissingSourceOtherError(error.message)) {
-          setHasSourceOtherColumn(false);
+        if (error && (isMissingSourceOtherError(error.message) || isMissingReferralColumnError(error.message) || isMissingConvertedByColumnError(error.message))) {
+          if (isMissingSourceOtherError(error.message)) setHasSourceOtherColumn(false);
+          if (isMissingReferralColumnError(error.message)) setHasReferralColumn(false);
+          if (isMissingConvertedByColumnError(error.message)) setHasConvertedByColumn(false);
           const fallback = await supabase
             .from('leads')
             .select('id, full_name, email, phone, source, status, destination_country, budget, interest_level, notes, assigned_to, converted_client_id, created_at')
@@ -79,7 +90,7 @@ export default function Leads() {
             toast.error(fallback.error.message);
             return;
           }
-          setLeads((fallback.data ?? []).map((lead: any) => ({ ...lead, source_other: null })));
+          setLeads((fallback.data ?? []).map((lead: any) => ({ ...lead, source_other: null, referred_by_user_id: null, converted_by_user_id: null })));
           return;
         }
         if (error) {
@@ -87,11 +98,23 @@ export default function Leads() {
           return;
         }
         setHasSourceOtherColumn(true);
+        setHasReferralColumn(true);
+        setHasConvertedByColumn(true);
         setLeads(data ?? []);
       });
   };
 
-  useEffect(() => { loadLeads(); }, []);
+  useEffect(() => {
+    loadLeads();
+    supabase
+      .from('profiles')
+      .select('id, full_name')
+      .order('full_name', { ascending: true })
+      .then(({ data, error }) => {
+        if (error) return;
+        setUsers(data ?? []);
+      });
+  }, []);
 
   const filtered = leads.filter(l => !search || l.full_name.toLowerCase().includes(search.toLowerCase()));
 
@@ -119,12 +142,16 @@ export default function Leads() {
       assigned_to: lead.assigned_to ?? null,
       converted_client_id: lead.converted_client_id ?? null,
       source_other: lead.source_other ?? '',
+      referred_by_user_id: lead.referred_by_user_id ?? null,
     });
     setDialogOpen(true);
   };
 
   const handleSave = async () => {
     if (!editing.full_name.trim()) return toast.error('Le nom est requis');
+    if (editing.source === 'referral' && !editing.referred_by_user_id) {
+      return toast.error('Veuillez choisir un utilisateur pour le referral');
+    }
     setSaving(true);
     const payload: any = {
       full_name: editing.full_name.trim(),
@@ -140,6 +167,12 @@ export default function Leads() {
     if (hasSourceOtherColumn) {
       payload.source_other = editing.source === 'other' ? (editing.source_other || null) : null;
     }
+    if (hasReferralColumn) {
+      payload.referred_by_user_id = editing.source === 'referral' ? (editing.referred_by_user_id || null) : null;
+    }
+    if (hasConvertedByColumn) {
+      payload.converted_by_user_id = editing.status === 'converted' ? (user?.id ?? null) : null;
+    }
     let error;
     if (editing.id) {
       ({ error } = await supabase.from('leads').update(payload).eq('id', editing.id));
@@ -149,6 +182,24 @@ export default function Leads() {
     if (error && isMissingSourceOtherError(error.message) && hasSourceOtherColumn) {
       delete payload.source_other;
       setHasSourceOtherColumn(false);
+      if (editing.id) {
+        ({ error } = await supabase.from('leads').update(payload).eq('id', editing.id));
+      } else {
+        ({ error } = await supabase.from('leads').insert(payload));
+      }
+    }
+    if (error && isMissingReferralColumnError(error.message) && hasReferralColumn) {
+      delete payload.referred_by_user_id;
+      setHasReferralColumn(false);
+      if (editing.id) {
+        ({ error } = await supabase.from('leads').update(payload).eq('id', editing.id));
+      } else {
+        ({ error } = await supabase.from('leads').insert(payload));
+      }
+    }
+    if (error && isMissingConvertedByColumnError(error.message) && hasConvertedByColumn) {
+      delete payload.converted_by_user_id;
+      setHasConvertedByColumn(false);
       if (editing.id) {
         ({ error } = await supabase.from('leads').update(payload).eq('id', editing.id));
       } else {
@@ -194,10 +245,22 @@ export default function Leads() {
       .single();
     if (cErr) return toast.error(cErr.message);
 
-    await supabase
+    let { error: convertErr } = await supabase
       .from('leads')
-      .update({ status: 'converted', converted_client_id: createdClient?.id ?? null })
+      .update({
+        status: 'converted',
+        converted_client_id: createdClient?.id ?? null,
+        ...(hasConvertedByColumn ? { converted_by_user_id: user?.id ?? null } : {}),
+      })
       .eq('id', lead.id);
+    if (convertErr && isMissingConvertedByColumnError(convertErr.message) && hasConvertedByColumn) {
+      setHasConvertedByColumn(false);
+      ({ error: convertErr } = await supabase
+        .from('leads')
+        .update({ status: 'converted', converted_client_id: createdClient?.id ?? null })
+        .eq('id', lead.id));
+    }
+    if (convertErr) return toast.error(convertErr.message);
     toast.success('Prospect converti en client');
     loadLeads();
     if (createdClient?.id) {
@@ -256,7 +319,9 @@ export default function Leads() {
                 <div className="space-y-2 min-h-[120px]">
                   {colLeads.map((lead, i) => {
                     const SrcIcon = sourceIcons[lead.source] ?? Globe;
-                    const nextStatus = PIPELINE[Math.min(PIPELINE.indexOf(lead.status as any) + 1, PIPELINE.length - 1)];
+                    const statusIndex = PIPELINE.indexOf(lead.status as any);
+                    const nextStatus = PIPELINE[Math.min(statusIndex + 1, PIPELINE.length - 1)];
+                    const prevStatus = PIPELINE[Math.max(statusIndex - 1, 0)];
                     return (
                       <motion.div key={lead.id}
                         initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: (colIdx * 0.05) + (i * 0.03) }}
@@ -292,6 +357,15 @@ export default function Leads() {
                           >
                             <ArrowRight className="w-3 h-3" />
                             {t(`leads.status.${nextStatus}`)}
+                          </button>
+                        )}
+                        {canEdit && prevStatus !== lead.status && (
+                          <button
+                            onClick={(e) => handleQuickStatus(e, lead.id, prevStatus)}
+                            className="mt-2 w-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1 text-[10px] uppercase tracking-wider font-semibold text-muted-foreground hover:text-foreground py-1 rounded border border-dashed border-border hover:border-muted-foreground/40"
+                          >
+                            <ArrowRight className="w-3 h-3 rotate-180" />
+                            {t(`leads.status.${prevStatus}`)}
                           </button>
                         )}
                       </motion.div>
@@ -407,6 +481,25 @@ export default function Leads() {
                 />
               </div>
             )}
+            {editing.source === 'referral' && (
+              <div className="space-y-2">
+                <Label>Référé par</Label>
+                <Select
+                  value={editing.referred_by_user_id ?? 'none'}
+                  onValueChange={v => setEditing({ ...editing, referred_by_user_id: v === 'none' ? null : v })}
+                >
+                  <SelectTrigger><SelectValue placeholder="Choisir un utilisateur" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Aucun</SelectItem>
+                    {users.map(u => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.full_name || u.id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Statut</Label>
               <Select value={editing.status} onValueChange={v => setEditing({ ...editing, status: v as any })}>
@@ -418,7 +511,18 @@ export default function Leads() {
             </div>
             <div className="space-y-2">
               <Label>Destination</Label>
-              <Input value={editing.destination_country ?? ''} onChange={e => setEditing({ ...editing, destination_country: e.target.value })} />
+              <Select
+                value={editing.destination_country || 'none'}
+                onValueChange={v => setEditing({ ...editing, destination_country: v === 'none' ? '' : v })}
+              >
+                <SelectTrigger><SelectValue placeholder="Choisir une destination" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Aucune</SelectItem>
+                  {DESTINATION_COUNTRIES.map((country) => (
+                    <SelectItem key={country} value={country}>{country}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label>Budget (FCFA)</Label>

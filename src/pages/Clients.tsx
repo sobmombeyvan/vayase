@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { DESTINATION_COUNTRIES } from '@/lib/destinations';
 
 const statusStyles: Record<string, string> = {
   vip: 'bg-gradient-accent text-vayase-night border-0',
@@ -46,8 +47,13 @@ export default function Clients() {
     notes: '',
     agent_id: 'none',
     procedure_template_id: 'none',
+    referred_by_user_id: 'none',
   });
   const [templates, setTemplates] = useState<any[]>([]);
+  const filteredTemplates = templates.filter((tpl) => {
+    if (!createForm.destination_country) return true;
+    return !tpl.destination_country || tpl.destination_country === createForm.destination_country;
+  });
 
   const loadClients = async () => {
     setLoading(true);
@@ -126,6 +132,7 @@ export default function Clients() {
       notes: createForm.notes.trim() || null,
       agent_id: createForm.agent_id === 'none' ? null : createForm.agent_id,
       procedure_template_id: createForm.procedure_template_id === 'none' ? null : createForm.procedure_template_id,
+      referred_by_user_id: createForm.referred_by_user_id === 'none' ? null : createForm.referred_by_user_id,
       status: 'standard',
       urgency: 'normal',
     };
@@ -170,6 +177,7 @@ export default function Clients() {
       notes: '',
       agent_id: 'none',
       procedure_template_id: 'none',
+      referred_by_user_id: 'none',
     });
     await loadClients();
   };
@@ -333,7 +341,24 @@ export default function Clients() {
             </div>
             <div className="space-y-2">
               <Label>Destination</Label>
-              <Input value={createForm.destination_country} onChange={e => setCreateForm({ ...createForm, destination_country: e.target.value })} />
+              <Select
+                value={createForm.destination_country || 'none'}
+                onValueChange={(v) => setCreateForm({
+                  ...createForm,
+                  destination_country: v === 'none' ? '' : v,
+                  procedure_template_id: 'none',
+                })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Choisir une destination" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Aucune</SelectItem>
+                  {DESTINATION_COUNTRIES.map((country) => (
+                    <SelectItem key={country} value={country}>{country}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label>Type de procédure</Label>
@@ -341,13 +366,24 @@ export default function Clients() {
             </div>
             <div className="space-y-2">
               <Label>Procédure (modèle)</Label>
-              <Select value={createForm.procedure_template_id} onValueChange={v => setCreateForm({ ...createForm, procedure_template_id: v })}>
+              <Select
+                value={createForm.procedure_template_id}
+                onValueChange={v => {
+                  const tpl = templates.find((t) => t.id === v);
+                  setCreateForm({
+                    ...createForm,
+                    procedure_template_id: v,
+                    destination_country: v !== 'none' && tpl?.destination_country ? tpl.destination_country : createForm.destination_country,
+                    visa_type: v !== 'none' && tpl?.visa_type ? tpl.visa_type : createForm.visa_type,
+                  });
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Choisir un modèle" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Aucun</SelectItem>
-                  {templates.map(tpl => (
+                  {filteredTemplates.map(tpl => (
                     <SelectItem key={tpl.id} value={tpl.id}>
                       {tpl.name}{tpl.destination_country ? ` — ${tpl.destination_country}` : ''}{tpl.visa_type ? ` (${tpl.visa_type})` : ''}
                     </SelectItem>
@@ -371,6 +407,18 @@ export default function Clients() {
               <Select value={createForm.agent_id} onValueChange={v => setCreateForm({ ...createForm, agent_id: v })}>
                 <SelectTrigger>
                   <SelectValue placeholder="Choisir un responsable" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Aucun</SelectItem>
+                  {users.map(u => <SelectItem key={u.id} value={u.id}>{u.full_name || u.id}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Référé par</Label>
+              <Select value={createForm.referred_by_user_id} onValueChange={v => setCreateForm({ ...createForm, referred_by_user_id: v })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choisir un utilisateur" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Aucun</SelectItem>
