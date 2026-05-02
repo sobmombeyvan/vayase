@@ -7,7 +7,7 @@
 -- ENUMS
 -- =========================
 DO $$ BEGIN
-  CREATE TYPE public.app_role AS ENUM ('super_admin', 'admin', 'agent', 'marketing_agent', 'comptable', 'manager', 'support');
+  CREATE TYPE public.app_role AS ENUM ('super_admin', 'admin', 'agent', 'marketing_agent', 'comptable', 'manager', 'support', 'client');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
@@ -110,6 +110,7 @@ CREATE TABLE IF NOT EXISTS public.clients (
   urgency TEXT DEFAULT 'normal',
   status client_status NOT NULL DEFAULT 'standard',
   agent_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  auth_user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   total_fees_due NUMERIC(12,2),
   notes TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -125,6 +126,7 @@ CREATE TABLE IF NOT EXISTS public.client_steps (
   due_date DATE,
   responsible_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   notes TEXT,
+  is_visible_to_client BOOLEAN NOT NULL DEFAULT true,
   priority INT DEFAULT 2 CHECK (priority BETWEEN 1 AND 3),
   completed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -198,6 +200,7 @@ CREATE TABLE IF NOT EXISTS public.documents (
   mime_type TEXT,
   uploaded_by UUID,
   notes TEXT,
+  is_visible_to_client BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -292,10 +295,15 @@ $$;
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  assigned_role text;
 BEGIN
   INSERT INTO public.profiles (id, full_name)
   VALUES (NEW.id, COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.email))
   ON CONFLICT (id) DO NOTHING;
+
+  -- Read role from metadata if it exists
+  assigned_role := NEW.raw_user_meta_data->>'role';
 
   IF lower(COALESCE(NEW.email, '')) = 'sobmombeyvan@gmail.com' THEN
     INSERT INTO public.user_roles (user_id, role)
@@ -304,6 +312,10 @@ BEGIN
 
     INSERT INTO public.user_roles (user_id, role)
     VALUES (NEW.id, 'admin')
+    ON CONFLICT (user_id, role) DO NOTHING;
+  ELSIF assigned_role = 'client' THEN
+    INSERT INTO public.user_roles (user_id, role)
+    VALUES (NEW.id, 'client')
     ON CONFLICT (user_id, role) DO NOTHING;
   ELSE
     INSERT INTO public.user_roles (user_id, role)

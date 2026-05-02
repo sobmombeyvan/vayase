@@ -134,6 +134,7 @@ export type Database = {
           created_at: string
           due_date: string | null
           id: string
+          is_visible_to_client: boolean
           notes: string | null
           priority: number | null
           responsible_id: string | null
@@ -148,6 +149,7 @@ export type Database = {
           created_at?: string
           due_date?: string | null
           id?: string
+          is_visible_to_client?: boolean
           notes?: string | null
           priority?: number | null
           responsible_id?: string | null
@@ -162,6 +164,7 @@ export type Database = {
           created_at?: string
           due_date?: string | null
           id?: string
+          is_visible_to_client?: boolean
           notes?: string | null
           priority?: number | null
           responsible_id?: string | null
@@ -306,6 +309,7 @@ export type Database = {
         Row: {
           address: string | null
           agent_id: string | null
+          auth_user_id: string | null
           created_at: string
           date_of_birth: string | null
           destination_country: string | null
@@ -330,6 +334,7 @@ export type Database = {
         Insert: {
           address?: string | null
           agent_id?: string | null
+          auth_user_id?: string | null
           created_at?: string
           date_of_birth?: string | null
           destination_country?: string | null
@@ -354,6 +359,7 @@ export type Database = {
         Update: {
           address?: string | null
           agent_id?: string | null
+          auth_user_id?: string | null
           created_at?: string
           date_of_birth?: string | null
           destination_country?: string | null
@@ -440,6 +446,7 @@ export type Database = {
           file_path: string
           file_size: number | null
           id: string
+          is_visible_to_client: boolean
           mime_type: string | null
           name: string
           notes: string | null
@@ -453,6 +460,7 @@ export type Database = {
           file_path: string
           file_size?: number | null
           id?: string
+          is_visible_to_client?: boolean
           mime_type?: string | null
           name: string
           notes?: string | null
@@ -466,6 +474,7 @@ export type Database = {
           file_path?: string
           file_size?: number | null
           id?: string
+          is_visible_to_client?: boolean
           mime_type?: string | null
           name?: string
           notes?: string | null
@@ -786,6 +795,7 @@ export type Database = {
         | "comptable"
         | "manager"
         | "support"
+        | "client"
       appointment_status:
         | "scheduled"
         | "confirmed"

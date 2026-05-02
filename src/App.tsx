@@ -6,7 +6,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { ClientLayout } from "@/components/layout/ClientLayout";
 import Auth from "./pages/Auth";
+import ClientLogin from "./pages/client/ClientLogin";
+import ClientDashboard from "./pages/client/ClientDashboard";
 import Dashboard from "./pages/Dashboard";
 import Clients from "./pages/Clients";
 import ClientDetail from "./pages/ClientDetail";
@@ -48,6 +51,13 @@ const App = () => (
               <Route path="/tasks" element={<Tasks />} />
               <Route path="/admin-ops" element={<AdminOps />} />
             </Route>
+            
+            {/* Client Routes */}
+            <Route path="/client/login" element={<ClientLogin />} />
+            <Route element={<ClientLayout />}>
+              <Route path="/client/dashboard" element={<ClientDashboard />} />
+            </Route>
+
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

@@ -1,0 +1,3 @@
+Admin will see the advancement of their procedure and can view it. Clients can also view their procedure advancement, see submitted documents, and remarks on their dashboard.
+
+Goal: Build a dashboard where admin can monitor client procedure progress, and clients can view their own progress, submitted documents, and remarks.

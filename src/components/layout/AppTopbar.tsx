@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
-import { Search, Globe, Moon, Sun, LogOut, User as UserIcon } from 'lucide-react';
+import { Search, Globe, Moon, Sun, LogOut, User as UserIcon, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -9,11 +9,14 @@ import { Badge } from '@/components/ui/badge';
 import { useEffect, useState } from 'react';
 import { NotificationCenter } from '@/components/notifications/NotificationCenter';
 import { BrandLogo } from '@/components/branding/BrandLogo';
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { AppSidebar } from './AppSidebar';
 
 export function AppTopbar() {
   const { t, i18n } = useTranslation();
   const { user, roles, signOut } = useAuth();
   const [dark, setDark] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem('vayase-theme');
@@ -36,7 +39,21 @@ export function AppTopbar() {
   const primaryRole = roles[0];
 
   return (
-    <header className="h-16 border-b border-border bg-card/60 backdrop-blur-xl sticky top-0 z-20 flex items-center px-6 gap-4">
+    <header className="h-16 border-b border-border bg-card/60 backdrop-blur-xl sticky top-0 z-40 flex items-center px-4 md:px-6 gap-4">
+      <div className="flex items-center gap-2 lg:hidden">
+        <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+          <SheetTrigger asChild>
+            <Button variant="ghost" size="icon" className="text-muted-foreground">
+              <Menu className="w-5 h-5" />
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" className="p-0 w-[260px] bg-sidebar border-r-0">
+            <AppSidebar onNavigate={() => setMobileOpen(false)} isMobile />
+          </SheetContent>
+        </Sheet>
+        <BrandLogo size="sm" showText={false} />
+      </div>
+
       <BrandLogo
         size="sm"
         className="hidden lg:flex"

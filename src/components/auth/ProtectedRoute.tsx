@@ -18,5 +18,12 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/auth" state={{ from: location }} replace />;
   }
 
+  // Prevent clients from accessing admin routes
+  // Assuming ProtectedRoute is used for admin/agent routes
+  const { hasRole } = useAuth();
+  if (hasRole('client') && !location.pathname.startsWith('/client')) {
+    return <Navigate to="/client/dashboard" replace />;
+  }
+
   return <>{children}</>;
 }

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { KPICard, SectionCard } from '@/components/dashboard/KPICard';
-import { Users, UserPlus, Wallet, TrendingUp, FileCheck, AlertCircle, CheckCircle2, Target } from 'lucide-react';
+import { Users, UserPlus, Wallet, TrendingUp, FileCheck, AlertCircle, CheckCircle2, Target, ShieldCheck } from 'lucide-react';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend } from 'recharts';
 import { Badge } from '@/components/ui/badge';
 import { motion } from 'framer-motion';
@@ -20,6 +20,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState({
     leads: 0, clients: 0, monthlyRevenue: 0, pendingPayments: 0,
     activeFiles: 0, approvedFiles: 0, conversionRate: 0, myConvertedClients: 0,
+    activePortals: 0,
   });
   const [revenueData, setRevenueData] = useState<{ month: string; revenue: number }[]>([]);
   const [countryData, setCountryData] = useState<{ name: string; value: number }[]>([]);
@@ -29,7 +30,7 @@ export default function Dashboard() {
   useEffect(() => {
     const load = async () => {
       const leadsQ = supabase.from('leads').select('id, status, created_at, converted_by_user_id');
-      const clientsQ = supabase.from('clients').select('id, full_name, destination_country, created_at, status, agent_id');
+      const clientsQ = supabase.from('clients').select('id, full_name, destination_country, created_at, status, agent_id, auth_user_id');
       const paymentsQ = supabase.from('payments').select('amount, status, payment_date, created_at');
       const stepsQ = supabase.from('client_steps').select('id, status, client_id');
 
@@ -66,6 +67,7 @@ export default function Dashboard() {
         approvedFiles: steps.filter(s => s.status === 'completed' || s.status === 'validated').length,
         conversionRate,
         myConvertedClients,
+        activePortals: clients.filter((c: any) => c.auth_user_id).length,
       });
 
       // Revenue evolution (last 6 months)
@@ -135,7 +137,7 @@ export default function Dashboard() {
         <KPICard label={isSupport ? 'Dossiers suivis' : t('dashboard.activeFiles')} value={stats.activeFiles} icon={FileCheck} accent="default" />
         <KPICard label={t('dashboard.conversionRate')} value={stats.conversionRate.toFixed(1)} suffix="%" icon={Target} accent="success" />
         <KPICard label={t('dashboard.approvedFiles')} value={stats.approvedFiles} icon={CheckCircle2} accent="success" />
-        <KPICard label="Mes leads convertis" value={stats.myConvertedClients} icon={TrendingUp} accent="default" />
+        <KPICard label="Portails Clients actifs" value={stats.activePortals} icon={ShieldCheck} accent="default" />
       </div>
 
       {/* Charts row 1 */}

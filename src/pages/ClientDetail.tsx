@@ -11,7 +11,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Mail, Phone, MapPin, Calendar, Briefcase, Globe, User, FileText, Wallet, CheckCircle2, Circle, Clock, AlertCircle, Loader2, Pencil, Plus, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
+import { ArrowLeft, Mail, Phone, MapPin, Calendar, Briefcase, Globe, User, FileText, Wallet, CheckCircle2, Circle, Clock, AlertCircle, Loader2, Pencil, Plus, Trash2, ArrowUp, ArrowDown, Key, Shield, Eye, EyeOff } from 'lucide-react';
+import { supabaseAdminClient } from '@/lib/supabase-admin';
+import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
@@ -61,6 +63,7 @@ export default function ClientDetail() {
   const [stepNotes, setStepNotes] = useState<Record<string, any[]>>({});
   const [stepNoteInputs, setStepNoteInputs] = useState<Record<string, string>>({});
   const [sourceLead, setSourceLead] = useState<any>(null);
+  const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [editOpen, setEditOpen] = useState(false);
@@ -74,6 +77,10 @@ export default function ClientDetail() {
   const [contractForm, setContractForm] = useState<any>({ total_amount: '', currency: 'XOF', status: 'active', signed_date: '', notes: '' });
   const [newStepForm, setNewStepForm] = useState<any>({ step_name: '', due_date: '', notes: '' });
 
+  const [clientAccessOpen, setClientAccessOpen] = useState(false);
+  const [clientPassword, setClientPassword] = useState('');
+  const [creatingAccess, setCreatingAccess] = useState(false);
+
   const load = () => {
     if (!id) return;
     Promise.all([
@@ -85,7 +92,8 @@ export default function ClientDetail() {
       supabase.from('client_step_notes').select('*').eq('client_id', id).order('created_at', { ascending: false }),
       supabase.from('procedure_templates').select('id, name, destination_country, visa_type, is_active').eq('is_active', true).order('name'),
       supabase.from('leads').select('id, full_name, converted_by_user_id, referred_by_user_id').eq('converted_client_id', id).maybeSingle(),
-    ]).then(([cRes, sRes, ctRes, pRes, uRes, nRes, tplRes, leadRes]) => {
+      supabase.from('documents').select('*').eq('client_id', id).order('created_at', { ascending: false }),
+    ]).then(([cRes, sRes, ctRes, pRes, uRes, nRes, tplRes, leadRes, docRes]) => {
       setClient(cRes.data);
       setSteps(sRes.data ?? []);
       setContracts(ctRes.data ?? []);
@@ -93,6 +101,7 @@ export default function ClientDetail() {
       setUsers(uRes.data ?? []);
       setTemplates(tplRes.data ?? []);
       setSourceLead(leadRes.data ?? null);
+      setDocuments(docRes.data ?? []);
       const groupedNotes = (nRes.data ?? []).reduce((acc: Record<string, any[]>, note: any) => {
         if (!acc[note.step_id]) acc[note.step_id] = [];
         acc[note.step_id].push(note);
@@ -192,7 +201,7 @@ export default function ClientDetail() {
           client_id: id,
           step_name: s.step_name,
           step_order: s.step_order ?? 0,
-          status: 'todo',
+          status: 'todo' as const,
           due_date: due ? due.toISOString().split('T')[0] : null,
           notes: s.notes ?? null,
         };
@@ -385,6 +394,64 @@ export default function ClientDetail() {
     load();
   };
 
+  const handleCreateClientAccess = async () => {
+    if (!isAdmin) return toast.error("Seul un admin peut créer des accès client");
+    if (!client.email) return toast.error("Le client n'a pas d'adresse email");
+    if (clientPassword.length < 6) return toast.error("Le mot de passe doit contenir au moins 6 caractères");
+
+    setCreatingAccess(true);
+    
+    // 1. Create auth user with supabase-admin client to avoid logging out
+    const { data: authData, error: authError } = await supabaseAdminClient.auth.signUp({
+      email: client.email,
+      password: clientPassword,
+      options: {
+        data: {
+          role: 'client',
+          full_name: client.full_name
+        }
+      }
+    });
+
+    if (authError) {
+      setCreatingAccess(false);
+      return toast.error(authError.message);
+    }
+
+    if (authData.user) {
+      // 2. Link the new auth user to this client record
+      const { error: updateError } = await supabase
+        .from('clients')
+        .update({ auth_user_id: authData.user.id })
+        .eq('id', client.id);
+
+      if (updateError) {
+        toast.error("Erreur lors de la liaison du compte: " + updateError.message);
+      } else {
+        toast.success("Accès portail client créé avec succès!");
+        setClientAccessOpen(false);
+        setClientPassword('');
+        load();
+      }
+    }
+  };
+
+  const toggleStepVisibility = async (stepId: string, currentVal: boolean) => {
+    const { error } = await supabase.from('client_steps').update({ is_visible_to_client: !currentVal }).eq('id', stepId);
+    if (!error) {
+      setSteps(steps.map(s => s.id === stepId ? { ...s, is_visible_to_client: !currentVal } : s));
+      toast.success(t('common.success'));
+    } else toast.error(error.message);
+  };
+
+  const toggleDocVisibility = async (docId: string, currentVal: boolean) => {
+    const { error } = await supabase.from('documents').update({ is_visible_to_client: !currentVal }).eq('id', docId);
+    if (!error) {
+      setDocuments(documents.map(d => d.id === docId ? { ...d, is_visible_to_client: !currentVal } : d));
+      toast.success(t('common.success'));
+    } else toast.error(error.message);
+  };
+
   return (
     <div className="space-y-6 max-w-[1400px] mx-auto">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -396,6 +463,16 @@ export default function ClientDetail() {
             <Button onClick={handleDeleteClient} variant="destructive" size="sm" disabled={deleting}>
               <Trash2 className="w-4 h-4 mr-1.5" />{deleting ? 'Suppression...' : 'Supprimer'}
             </Button>
+          )}
+          {canEdit && !client.auth_user_id && client.email && (
+            <Button onClick={() => setClientAccessOpen(true)} variant="outline" size="sm" className="border-vayase-accent text-vayase-accent hover:bg-vayase-accent hover:text-vayase-night">
+              <Key className="w-4 h-4 mr-1.5" />Créer Accès Client
+            </Button>
+          )}
+          {client.auth_user_id && (
+            <Badge variant="outline" className="bg-success/10 text-success border-success/20">
+              <Key className="w-3 h-3 mr-1" />Accès Actif
+            </Badge>
           )}
           {canEdit && (
             <Button onClick={openEdit} variant="outline" size="sm">
@@ -454,7 +531,12 @@ export default function ClientDetail() {
         <TabsList className="bg-card border border-border w-full justify-start overflow-x-auto">
           <TabsTrigger value="info"><User className="w-4 h-4 mr-1.5" />{t('clients.personalInfo')}</TabsTrigger>
           <TabsTrigger value="procedure"><FileText className="w-4 h-4 mr-1.5" />{t('clients.procedure')}</TabsTrigger>
-          <TabsTrigger value="finance"><Wallet className="w-4 h-4 mr-1.5" />{t('clients.finance')}</TabsTrigger>
+          <TabsTrigger value="finance" className="flex items-center gap-1.5"><Wallet className="w-4 h-4 mr-1.5" />{t('nav.finance')}</TabsTrigger>
+          <TabsTrigger value="portal" className="flex items-center gap-1.5 relative">
+            <Shield className="w-4 h-4 mr-1.5" />
+            Espace Client
+            {!client?.auth_user_id && <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5 rounded-full bg-vayase-accent animate-pulse shadow-[0_0_8px_hsl(var(--vayase-accent))]" />}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="info" className="mt-5">
@@ -758,6 +840,112 @@ export default function ClientDetail() {
             </div>
           </div>
         </TabsContent>
+
+        <TabsContent value="portal" className="mt-5 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="md:col-span-1 space-y-6">
+              <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+                <h3 className="font-display font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-vayase-accent" />
+                  Accès Client
+                </h3>
+                {client.auth_user_id ? (
+                  <div className="space-y-4">
+                    <div className="bg-success/5 border border-success/20 rounded-lg p-4">
+                      <div className="flex items-center gap-2 text-success font-medium mb-1">
+                        <CheckCircle2 className="w-4 h-4" /> Accès Actif
+                      </div>
+                      <p className="text-sm text-gray-600">Le client peut se connecter à son espace avec l'adresse : <strong>{client.email}</strong></p>
+                    </div>
+                    
+                    <Button 
+                      variant="outline" 
+                      onClick={() => setClientAccessOpen(true)} 
+                      className="w-full border-gray-200 text-gray-600 hover:bg-gray-50"
+                    >
+                      <Key className="w-4 h-4 mr-2" /> Modifier le mot de passe
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <p className="text-sm text-gray-600">Le client n'a pas encore d'accès à son portail. Vous pouvez lui en créer un pour qu'il puisse suivre l'avancement de son dossier.</p>
+                    {client.email ? (
+                      <Button onClick={() => setClientAccessOpen(true)} className="w-full bg-vayase-accent hover:bg-vayase-accent/90 text-vayase-night">
+                        <Key className="w-4 h-4 mr-2" /> Générer les accès
+                      </Button>
+                    ) : (
+                      <div className="text-sm text-warning bg-warning/10 p-3 rounded-lg border border-warning/20">
+                        Le client doit avoir une adresse email renseignée pour avoir un accès.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="md:col-span-2 space-y-6">
+              <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+                <h3 className="font-display font-semibold text-gray-900 mb-4 flex items-center justify-between">
+                  <span>Étapes de la Procédure</span>
+                  <span className="text-xs font-normal text-gray-500 bg-gray-100 px-2 py-1 rounded-full">{steps.length} étapes</span>
+                </h3>
+                <div className="space-y-3">
+                  {steps.map((step) => (
+                    <div key={step.id} className="flex items-center justify-between p-3 rounded-lg border border-gray-100 bg-gray-50/50">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-2 h-2 rounded-full ${step.status === 'completed' ? 'bg-success' : step.status === 'in_progress' ? 'bg-warning' : 'bg-gray-300'}`} />
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{step.step_name}</p>
+                          <p className="text-xs text-gray-500 capitalize">{t(`procedures.status.${step.status}`)}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500 flex items-center gap-1">
+                          {step.is_visible_to_client ? <><Eye className="w-3 h-3 text-vayase-accent" /> Visible</> : <><EyeOff className="w-3 h-3" /> Masqué</>}
+                        </span>
+                        <Switch 
+                          checked={step.is_visible_to_client ?? true} 
+                          onCheckedChange={() => toggleStepVisibility(step.id, step.is_visible_to_client ?? true)} 
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  {steps.length === 0 && <p className="text-sm text-gray-500 text-center py-4">Aucune étape pour le moment</p>}
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+                <h3 className="font-display font-semibold text-gray-900 mb-4 flex items-center justify-between">
+                  <span>Documents du Client</span>
+                  <span className="text-xs font-normal text-gray-500 bg-gray-100 px-2 py-1 rounded-full">{documents.length} documents</span>
+                </h3>
+                <div className="space-y-3">
+                  {documents.map((doc) => (
+                    <div key={doc.id} className="flex items-center justify-between p-3 rounded-lg border border-gray-100 bg-gray-50/50">
+                      <div className="flex items-center gap-3">
+                        <FileText className="w-5 h-5 text-gray-400" />
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{doc.name}</p>
+                          <p className="text-xs text-gray-500 uppercase">{doc.category}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500 flex items-center gap-1">
+                          {doc.is_visible_to_client ? <><Eye className="w-3 h-3 text-vayase-accent" /> Visible</> : <><EyeOff className="w-3 h-3" /> Masqué</>}
+                        </span>
+                        <Switch 
+                          checked={doc.is_visible_to_client ?? true} 
+                          onCheckedChange={() => toggleDocVisibility(doc.id, doc.is_visible_to_client ?? true)} 
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  {documents.length === 0 && <p className="text-sm text-gray-500 text-center py-4">Aucun document pour le moment</p>}
+                </div>
+              </div>
+            </div>
+          </div>
+        </TabsContent>
       </Tabs>
 
       {/* Edit client dialog */}
@@ -952,6 +1140,51 @@ export default function ClientDetail() {
             <Button variant="ghost" onClick={() => setContractOpen(false)}>{t('common.cancel')}</Button>
             <Button onClick={handleAddContract} className="bg-gradient-accent text-vayase-night font-semibold">
               {t('common.create')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Client Access dialog */}
+      <Dialog open={clientAccessOpen} onOpenChange={setClientAccessOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2">
+              <Shield className="w-5 h-5 text-vayase-accent" />
+              {client?.auth_user_id ? "Réinitialiser l'accès" : "Créer un accès portail"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6 py-4">
+            <div className="bg-secondary/50 p-4 rounded-lg space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Utilisateur</p>
+              <p className="text-sm font-medium">{client?.full_name}</p>
+              <p className="text-xs text-muted-foreground">{client?.email}</p>
+            </div>
+            
+            <div className="space-y-3">
+              <Label className="text-sm font-semibold">Définir un mot de passe *</Label>
+              <div className="relative">
+                <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  type="text"
+                  placeholder="Minimum 6 caractères"
+                  value={clientPassword}
+                  onChange={e => setClientPassword(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-relaxed italic">
+                {client?.auth_user_id 
+                  ? "Note: Pour modifier un compte existant, le client recevra un email de confirmation ou vous devrez utiliser le tableau de bord Supabase." 
+                  : "Le compte sera créé immédiatement. Communiquez ce mot de passe au client."}
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setClientAccessOpen(false)}>{t('common.cancel')}</Button>
+            <Button onClick={handleCreateClientAccess} disabled={creatingAccess} className="bg-gradient-accent text-vayase-night font-semibold">
+              {creatingAccess ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              Générer l'accès
             </Button>
           </DialogFooter>
         </DialogContent>

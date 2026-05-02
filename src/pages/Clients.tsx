@@ -133,8 +133,8 @@ export default function Clients() {
       agent_id: createForm.agent_id === 'none' ? null : createForm.agent_id,
       procedure_template_id: createForm.procedure_template_id === 'none' ? null : createForm.procedure_template_id,
       referred_by_user_id: createForm.referred_by_user_id === 'none' ? null : createForm.referred_by_user_id,
-      status: 'standard',
-      urgency: 'normal',
+      status: 'standard' as any,
+      urgency: 'normal' as any,
     };
     const { data: createdClient, error } = await supabase.from('clients').insert(payload).select('id').single();
     setCreating(false);
@@ -156,7 +156,7 @@ export default function Clients() {
             client_id: createdClient.id,
             step_name: s.step_name,
             step_order: s.step_order ?? 0,
-            status: 'todo',
+            status: 'todo' as any,
             due_date: due ? due.toISOString().split('T')[0] : null,
             notes: s.notes ?? null,
           };
@@ -235,6 +235,7 @@ export default function Clients() {
                 <th className="text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground py-3.5 px-5">{t('clients.fullName')}</th>
                 <th className="text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground py-3.5 px-5 hidden md:table-cell">{t('clients.destination')}</th>
                 <th className="text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground py-3.5 px-5 hidden lg:table-cell">{t('clients.profession')}</th>
+                <th className="text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground py-3.5 px-5 hidden xl:table-cell">Portail</th>
                 <th className="text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground py-3.5 px-5">{t('common.status')}</th>
                 <th className="text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground py-3.5 px-5">Priorité</th>
                 <th className="w-12"></th>
@@ -284,6 +285,16 @@ export default function Clients() {
                       {c.profession}
                     </div>
                     <div className="text-xs text-muted-foreground mt-0.5">{c.nationality}</div>
+                  </td>
+                  <td className="py-3.5 px-5 hidden xl:table-cell">
+                    {c.auth_user_id ? (
+                      <Badge variant="outline" className="bg-success/10 text-success border-success/20 gap-1 px-1.5 py-0.5">
+                        <Plus className="w-3 h-3 rotate-45 hidden" /> {/* dummy for spacing if needed */}
+                        Actif
+                      </Badge>
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Non créé</span>
+                    )}
                   </td>
                   <td className="py-3.5 px-5">
                     <Badge className={cn('text-[10px] uppercase tracking-wider font-semibold', statusStyles[c.status])}>
