@@ -302,6 +302,54 @@ export default function ClientDetail() {
     }
   };
 
+  const handleApplyTemplate = async (tplId: string) => {
+    if (!tplId || !id) return;
+    const confirm = window.confirm("Souhaitez-vous appliquer ce modèle ? Cela ajoutera de nouvelles étapes à la timeline.");
+    if (!confirm) return;
+
+    setLoading(true);
+    const { data: tplSteps, error: sErr } = await supabase
+      .from('procedure_template_steps')
+      .select('*')
+      .eq('template_id', tplId)
+      .order('step_order');
+
+    if (sErr) {
+      toast.error("Erreur lors de la récupération du modèle");
+      setLoading(false);
+      return;
+    }
+
+    if (tplSteps && tplSteps.length > 0) {
+      const today = new Date();
+      // Calculate start order based on current steps
+      const currentMaxOrder = steps.length > 0 ? Math.max(...steps.map(s => Number(s.step_order) || 0)) : 0;
+      
+      const rows = tplSteps.map((s: any, idx: number) => {
+        const due = s.default_due_days != null ? new Date(today.getTime() + (Number(s.default_due_days) * 86400000)) : null;
+        return {
+          client_id: id,
+          step_name: s.step_name,
+          step_order: currentMaxOrder + idx + 1,
+          status: 'todo' as any,
+          due_date: due ? due.toISOString().split('T')[0] : null,
+          notes: s.notes ?? null,
+        };
+      });
+
+      const { error: iErr } = await supabase.from('client_steps').insert(rows);
+      if (iErr) {
+        toast.error(iErr.message);
+      } else {
+        toast.success(`${rows.length} étapes ajoutées`);
+        load();
+      }
+    } else {
+      toast.error("Ce modèle ne contient aucune étape");
+    }
+    setLoading(false);
+  };
+
   const moveClientStep = async (stepId: string, direction: 'up' | 'down') => {
     if (!canManageSteps) return toast.error("Seul un admin peut modifier les étapes");
     const sorted = [...steps].sort((a, b) => (a.step_order ?? 0) - (b.step_order ?? 0));
@@ -606,8 +654,25 @@ export default function ClientDetail() {
             </div>
 
             {canManageSteps && (
-              <div className="mb-6 rounded-lg border border-border p-3 sm:p-4 space-y-3">
-                <div className="font-semibold text-sm">Ajouter une étape au client</div>
+              <div className="mb-6 rounded-lg border border-border p-3 sm:p-4 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="font-semibold text-sm">Ajouter une étape au client</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">Ou appliquer un modèle :</span>
+                    <Select onValueChange={(val) => handleApplyTemplate(val)}>
+                      <SelectTrigger className="w-[200px] h-8 text-xs bg-secondary/50 border-transparent">
+                        <SelectValue placeholder="Choisir un modèle..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {templates.map(tpl => (
+                          <SelectItem key={tpl.id} value={tpl.id}>
+                            {tpl.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div className="space-y-1">
                     <Label>Nom étape *</Label>
