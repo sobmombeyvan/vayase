@@ -10,7 +10,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, Shield, Plus, X, Globe, ScrollText } from 'lucide-react';
+import { Users, Shield, Plus, X, Globe, ScrollText, Trash2, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -23,6 +23,7 @@ const allRoles = [
   { value: 'comptable', label: 'Comptable', color: 'bg-emerald-500/15 text-emerald-500' },
   { value: 'manager', label: 'Manager', color: 'bg-amber-500/15 text-amber-500' },
   { value: 'support', label: 'Support', color: 'bg-muted text-muted-foreground' },
+  { value: 'client', label: 'Client (Portail)', color: 'bg-stone-500/15 text-stone-500' },
 ];
 
 const allCountries = ['Canada', 'Germany', 'France', 'United Kingdom', 'United States', 'Australia', 'Belgium', 'Spain'];
@@ -43,11 +44,12 @@ export default function Employees() {
   const [permDialog, setPermDialog] = useState<{ open: boolean; userId: string | null; userName: string }>({ open: false, userId: null, userName: '' });
   const [newCountry, setNewCountry] = useState('');
   const [newRole, setNewRole] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
     const [profs, urs, perms, log, cls, steps, notes] = await Promise.all([
-      supabase.from('profiles').select('*, user_roles(role)').order('created_at', { ascending: false }),
+      supabase.from('profiles').select('*').order('created_at', { ascending: false }),
       supabase.from('user_roles').select('*'),
       supabase.from('agent_country_permissions').select('*'),
       supabase.from('activity_log').select('*').order('created_at', { ascending: false }).limit(50),
@@ -56,17 +58,19 @@ export default function Employees() {
       supabase.from('client_step_notes').select('id, user_id'),
     ]);
     
-    // Filtrer pour ne garder que le personnel (exclure ceux qui ont uniquement ou le rôle 'client')
+    const allRolesData = urs.data || [];
+    
+    // Filtrer pour ne garder que le personnel (exclure ceux qui ont le rôle 'client')
     const allProfs = profs.data || [];
     const staffOnly = allProfs.filter((u: any) => {
-      const roles = u.user_roles || [];
-      const hasClientRole = roles.some((r: any) => r.role === 'client');
-      // On exclut les utilisateurs qui ont le rôle 'client'
+      // Trouver tous les rôles de cet utilisateur
+      const userRolesForThisUser = allRolesData.filter((r: any) => r.user_id === u.id);
+      const hasClientRole = userRolesForThisUser.some((r: any) => r.role === 'client');
       return !hasClientRole;
     });
 
     setEmployees(staffOnly);
-    setAllRolesData(urs.data || []);
+    setAllRolesData(allRolesData);
     setPermissions(perms.data || []);
     setActivityLog(log.data || []);
     setAssignedClients(cls.data || []);
@@ -112,6 +116,23 @@ export default function Employees() {
   const removeCountry = async (id: string) => {
     await supabase.from('agent_country_permissions').delete().eq('id', id);
     load();
+  };
+
+  const deleteEmployee = async (id: string, name: string) => {
+    if (!isAdmin) return;
+    const ok = window.confirm(`Voulez-vous vraiment supprimer définitivement l'employé ${name} ? Cette action est irréversible et supprimera tout son historique.`);
+    if (!ok) return;
+    
+    setDeletingId(id);
+    const { error } = await supabase.rpc('delete_user' as any, { target_user_id: id });
+    setDeletingId(null);
+    
+    if (error) {
+      toast.error('Erreur lors de la suppression : ' + error.message);
+    } else {
+      toast.success('Employé supprimé avec succès');
+      load();
+    }
   };
 
   if (!isAdmin) {
@@ -220,6 +241,14 @@ export default function Employees() {
                           onClick={() => setPermDialog({ open: true, userId: emp.id, userName: emp.full_name || 'Employé' })}>
                           <Globe className="w-3 h-3 mr-1" />Pays
                         </Button>
+                        {emp.id !== currentUser?.id && (
+                          <Button variant="outline" size="sm" className="h-8 text-xs text-destructive hover:bg-destructive/10 border-destructive/20"
+                            onClick={() => deleteEmployee(emp.id, emp.full_name || 'Employé')}
+                            disabled={deletingId === emp.id}>
+                            {deletingId === emp.id ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Trash2 className="w-3 h-3 mr-1" />}
+                            Supprimer
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </Card>

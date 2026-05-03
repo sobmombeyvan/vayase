@@ -7,6 +7,7 @@ import { Users, UserPlus, Wallet, TrendingUp, FileCheck, AlertCircle, CheckCircl
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend } from 'recharts';
 import { Badge } from '@/components/ui/badge';
 import { motion } from 'framer-motion';
+import { formatCurrency } from '@/lib/utils';
 
 const COUNTRY_COLORS = ['#49BFFF', '#0891b2', '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981'];
 
@@ -101,8 +102,6 @@ export default function Dashboard() {
 
     load();
   }, [t, isAgent, canSeeFinance, user?.id]);
-
-  const formatCurrency = (n: number) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF', maximumFractionDigits: 0 }).format(n);
 
   const greeting = user?.email?.split('@')[0] ?? '';
 

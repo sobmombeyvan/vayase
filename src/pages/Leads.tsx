@@ -9,8 +9,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { cn } from '@/lib/utils';
-import { motion } from 'framer-motion';
+import { cn, formatCurrency } from '@/lib/utils';
+import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { DESTINATION_COUNTRIES } from '@/lib/destinations';
@@ -117,9 +117,6 @@ export default function Leads() {
   }, []);
 
   const filtered = leads.filter(l => !search || l.full_name.toLowerCase().includes(search.toLowerCase()));
-
-  const formatCurrency = (n: number) =>
-    new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF', maximumFractionDigits: 0 }).format(n);
 
   const openNew = () => {
     if (!canEdit) return toast.error("Vous n'avez pas les permissions");

@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
 import { KPICard } from '@/components/dashboard/KPICard';
-import { Wallet, TrendingUp, Clock, AlertCircle, Receipt, Trash2 } from 'lucide-react';
+import { Wallet, TrendingUp, Clock, AlertCircle, Receipt, Trash2, Printer } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { generatePaymentReceipt } from '@/lib/exports';
 import { toast } from 'sonner';
@@ -46,6 +46,18 @@ export default function Finance() {
     loadFinanceData();
   }, [canFinance]);
 
+  const handlePrintReceipt = (payment: any) => {
+    generatePaymentReceipt({
+      reference: payment.reference || 'REF-N/A',
+      clientName: clients[payment.client_id] || 'Client Inconnu',
+      amount: Number(payment.amount),
+      currency: payment.currency || 'XOF',
+      paymentDate: payment.payment_date || new Date().toISOString(),
+      paymentMethod: payment.payment_method,
+      contractNumber: contracts.find((c: any) => c.id === payment.contract_id)?.contract_number,
+    });
+  };
+
   const deletePayment = async (paymentId: string) => {
     if (!canDeletePayment) return toast.error("Seuls les admins peuvent supprimer un paiement");
     const ok = window.confirm('Supprimer ce paiement ?');
@@ -67,7 +79,6 @@ export default function Finance() {
     );
   }
 
-  const formatCurrency = (n: number) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF', maximumFractionDigits: 0 }).format(n);
   const totalRevenue = payments.filter(p => p.status === 'paid').reduce((s, p) => s + Number(p.amount), 0);
   const pending = payments.filter(p => p.status === 'pending').reduce((s, p) => s + Number(p.amount), 0);
   const overdue = payments.filter(p => p.status === 'overdue').reduce((s, p) => s + Number(p.amount), 0);
@@ -145,18 +156,7 @@ export default function Finance() {
                   <td className="py-3.5 px-5 text-right">
                     <div className="flex items-center justify-end gap-1">
                       {p.status === 'paid' && (
-                        <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity h-7 gap-1 text-xs"
-                          onClick={() => {
-                            generatePaymentReceipt({
-                              reference: p.reference || p.id.slice(0, 8),
-                              clientName: clients[p.client_id] || 'Client',
-                              amount: Number(p.amount),
-                              currency: p.currency,
-                              paymentDate: p.payment_date || p.created_at,
-                              paymentMethod: p.payment_method,
-                            });
-                            toast.success('Reçu généré');
-                          }}>
+                        <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity h-7 gap-1 text-xs" onClick={() => handlePrintReceipt(p)} title="Imprimer le reçu">
                           <Receipt className="w-3 h-3" />Reçu
                         </Button>
                       )}

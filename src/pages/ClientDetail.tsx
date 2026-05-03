@@ -11,13 +11,14 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Mail, Phone, MapPin, Calendar, Briefcase, Globe, User, FileText, Wallet, CheckCircle2, Circle, Clock, AlertCircle, Loader2, Pencil, Plus, Trash2, ArrowUp, ArrowDown, Key, Shield, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, Mail, Phone, MapPin, Calendar, Briefcase, Globe, User, FileText, Wallet, CheckCircle2, Circle, Clock, AlertCircle, Loader2, Pencil, Plus, Trash2, ArrowUp, ArrowDown, Key, Shield, Eye, EyeOff, UploadCloud, Download, Printer } from 'lucide-react';
 import { supabaseAdminClient } from '@/lib/supabase-admin';
 import { Switch } from '@/components/ui/switch';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { generatePaymentReceipt } from '@/lib/exports';
 import { DESTINATION_COUNTRIES } from '@/lib/destinations';
 
 const statusStyles: Record<string, string> = {
@@ -65,6 +66,7 @@ export default function ClientDetail() {
   const [sourceLead, setSourceLead] = useState<any>(null);
   const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
 
   const [editOpen, setEditOpen] = useState(false);
   const [editForm, setEditForm] = useState<any>({});
@@ -82,6 +84,9 @@ export default function ClientDetail() {
   const [creatingAccess, setCreatingAccess] = useState(false);
   const [templateConfirmOpen, setTemplateConfirmOpen] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+
+  const [requestDocOpen, setRequestDocOpen] = useState(false);
+  const [requestDocForm, setRequestDocForm] = useState({ name: '' });
 
   const load = () => {
     if (!id) return;
@@ -125,7 +130,6 @@ export default function ClientDetail() {
   }
   if (!client) return <div>Client introuvable</div>;
 
-  const formatCurrency = (n: number, c = 'XOF') => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: c, maximumFractionDigits: 0 }).format(n);
   const totalContract = contracts.reduce((s, c) => s + Number(c.total_amount), 0);
   const totalPaid = payments.filter(p => p.status === 'paid').reduce((s, p) => s + Number(p.amount), 0);
   const totalPending = payments.filter(p => p.status === 'pending' || p.status === 'overdue').reduce((s, p) => s + Number(p.amount), 0);
@@ -198,10 +202,19 @@ export default function ClientDetail() {
         .order('step_order');
       if (tplErr) {
         setSaving(false);
-        return toast.error(tplErr.message);
+        return toast.error("Erreur chargement modèle: " + tplErr.message);
       }
 
-      await supabase.from('client_steps').delete().eq('client_id', id);
+      // Delete existing steps explicitly by their IDs using the authenticated client
+      const existingStepIds = steps.map(s => s.id);
+      if (existingStepIds.length > 0) {
+        const { error: delErr } = await supabase.from('client_steps').delete().in('id', existingStepIds);
+        if (delErr) {
+          console.error("Delete error:", delErr);
+          toast.error("Impossible de supprimer les anciennes étapes. " + delErr.message);
+        }
+      }
+
       const today = new Date();
       const rows = (tplSteps ?? []).map((s: any) => {
         const due = s.default_due_days != null ? new Date(today.getTime() + (Number(s.default_due_days) * 86400000)) : null;
@@ -218,7 +231,7 @@ export default function ClientDetail() {
         const { error: insErr } = await supabase.from('client_steps').insert(rows);
         if (insErr) {
           setSaving(false);
-          return toast.error(insErr.message);
+          return toast.error("Erreur insertion: " + insErr.message);
         }
       }
     }
@@ -327,16 +340,27 @@ export default function ClientDetail() {
     }
 
     if (tplSteps && tplSteps.length > 0) {
+      // 1. Delete all existing steps
+      const existingStepIds = steps.map(s => s.id);
+      if (existingStepIds.length > 0) {
+        const { error: delErr } = await supabase.from('client_steps').delete().in('id', existingStepIds);
+        if (delErr) {
+          toast.error("Impossible d'effacer les anciennes étapes");
+          console.error(delErr);
+        }
+      }
+
+      // 2. Update client procedure_template_id
+      await supabase.from('clients').update({ procedure_template_id: tplId }).eq('id', id);
+
       const today = new Date();
-      // Calculate start order based on current steps
-      const currentMaxOrder = steps.length > 0 ? Math.max(...steps.map(s => Number(s.step_order) || 0)) : 0;
       
       const rows = tplSteps.map((s: any, idx: number) => {
         const due = s.default_due_days != null ? new Date(today.getTime() + (Number(s.default_due_days) * 86400000)) : null;
         return {
           client_id: id,
           step_name: s.step_name,
-          step_order: currentMaxOrder + idx + 1,
+          step_order: idx + 1,
           status: 'todo' as any,
           due_date: due ? due.toISOString().split('T')[0] : null,
           notes: s.notes ?? null,
@@ -347,13 +371,14 @@ export default function ClientDetail() {
       if (iErr) {
         toast.error(iErr.message);
       } else {
-        toast.success(`${rows.length} étapes ajoutées`);
+        toast.success(`Procédure appliquée : ${rows.length} étapes ajoutées`);
         load();
       }
     } else {
       toast.error("Ce modèle ne contient aucune étape");
     }
     setLoading(false);
+    setTemplateConfirmOpen(false);
   };
 
   const moveClientStep = async (stepId: string, direction: 'up' | 'down') => {
@@ -392,14 +417,26 @@ export default function ClientDetail() {
     }
   };
 
-  const updatePaymentStatus = async (paymentId: string, newStatus: string) => {
+  const updatePaymentStatus = async (paymentId: string, status: string) => {
     if (!canFinance) return toast.error("Permissions insuffisantes");
-    const update: any = { status: newStatus };
-    if (newStatus === 'paid') update.payment_date = new Date().toISOString().split('T')[0];
+    const update: any = { status };
+    if (status === 'paid') update.payment_date = new Date().toISOString().split('T')[0];
     const { error } = await supabase.from('payments').update(update).eq('id', paymentId);
     if (error) return toast.error(error.message);
     toast.success('Paiement mis à jour');
     load();
+  };
+
+  const handlePrintReceipt = (payment: any) => {
+    generatePaymentReceipt({
+      reference: payment.reference || 'REF-N/A',
+      clientName: client.full_name,
+      amount: Number(payment.amount),
+      currency: payment.currency || 'XOF',
+      paymentDate: payment.payment_date || new Date().toISOString(),
+      paymentMethod: payment.payment_method,
+      contractNumber: contracts.find(c => c.id === payment.contract_id)?.contract_number,
+    });
   };
 
   const handleAddPayment = async () => {
@@ -448,6 +485,78 @@ export default function ClientDetail() {
     load();
   };
 
+  const handleRequestDocument = async () => {
+    if (!requestDocForm.name.trim()) return toast.error("Nom du document requis");
+    const { data: authData } = await supabase.auth.getUser();
+    const { error } = await supabase.from('documents').insert({
+      client_id: id,
+      name: requestDocForm.name,
+      category: 'other',
+      file_path: 'pending',
+      is_visible_to_client: true,
+      uploaded_by: authData.user?.id
+    });
+    if (error) return toast.error(error.message);
+    toast.success('Document demandé au client');
+    setRequestDocOpen(false);
+    setRequestDocForm({ name: '' });
+    load();
+  };
+
+  const handleUploadDocument = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) return toast.error("Le fichier est trop volumineux (max 5MB)");
+
+    setUploadingDoc(true);
+    const { data: authData } = await supabase.auth.getUser();
+    
+    // 1. Upload file to storage
+    const fileExt = file.name.split('.').pop();
+    const cleanDocName = file.name.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+    const fileName = `${id}/${cleanDocName}_${Date.now()}.${fileExt}`;
+    
+    const { error: uploadError } = await supabase.storage
+      .from('client-documents')
+      .upload(fileName, file);
+
+    if (uploadError) {
+      setUploadingDoc(false);
+      return toast.error("Erreur lors de l'upload: " + uploadError.message);
+    }
+
+    // 2. Add record to documents table
+    const { error: dbError } = await supabase.from('documents').insert({
+      client_id: id,
+      name: file.name,
+      category: 'other',
+      file_path: fileName,
+      file_size: file.size,
+      mime_type: file.type,
+      is_visible_to_client: true,
+      uploaded_by: authData.user?.id
+    });
+
+    setUploadingDoc(false);
+    
+    if (dbError) {
+      return toast.error("Erreur lors de l'enregistrement: " + dbError.message);
+    }
+    
+    toast.success('Document ajouté avec succès');
+    load();
+    // Reset the input
+    e.target.value = '';
+  };
+
+  const handleDownloadDocument = async (doc: any) => {
+    if (doc.file_path === 'pending') return;
+    const { data, error } = await supabase.storage.from('client-documents').createSignedUrl(doc.file_path, 3600);
+    if (error) return toast.error("Impossible d'accéder au fichier: " + error.message);
+    window.open(data.signedUrl, '_blank');
+  };
+
   const handleCreateClientAccess = async () => {
     if (!isAdmin) return toast.error("Seul un admin peut créer des accès client");
     if (!client.email) return toast.error("Le client n'a pas d'adresse email");
@@ -479,14 +588,21 @@ export default function ClientDetail() {
         .update({ auth_user_id: authData.user.id })
         .eq('id', client.id);
 
+      // Force the role to be client and remove agent role (bypassing any backend trigger bugs)
+      await supabase.from('user_roles').delete().eq('user_id', authData.user.id).eq('role', 'agent');
+      await supabase.from('user_roles').insert({ user_id: authData.user.id, role: 'client' as any });
+
       if (updateError) {
         toast.error("Erreur lors de la liaison du compte: " + updateError.message);
       } else {
         toast.success("Accès portail client créé avec succès!");
         setClientAccessOpen(false);
         setClientPassword('');
+        setCreatingAccess(false);
         load();
       }
+    } else {
+      setCreatingAccess(false);
     }
   };
 
@@ -890,7 +1006,7 @@ export default function ClientDetail() {
                       <td className="py-3 font-mono text-xs">{p.reference}</td>
                       <td className="py-3 text-muted-foreground">{p.due_date ? new Date(p.due_date).toLocaleDateString('fr-FR') : '—'}</td>
                       <td className="py-3 text-right font-semibold">{formatCurrency(Number(p.amount), p.currency)}</td>
-                      <td className="py-3">
+                      <td className="py-3 flex items-center gap-2">
                         {canFinance ? (
                           <Select value={p.status} onValueChange={(v) => updatePaymentStatus(p.id, v)}>
                             <SelectTrigger className="h-7 w-[130px] text-[10px] uppercase tracking-wider">
@@ -910,6 +1026,11 @@ export default function ClientDetail() {
                           )}>
                             {t(`finance.paymentStatus.${p.status}`)}
                           </Badge>
+                        )}
+                        {p.status === 'paid' && (
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-vayase-accent shrink-0" onClick={() => handlePrintReceipt(p)} title="Imprimer le reçu">
+                            <Printer className="w-4 h-4" />
+                          </Button>
                         )}
                       </td>
                     </tr>
@@ -997,10 +1118,33 @@ export default function ClientDetail() {
               </div>
 
               <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-                <h3 className="font-display font-semibold text-gray-900 mb-4 flex items-center justify-between">
-                  <span>Documents du Client</span>
-                  <span className="text-xs font-normal text-gray-500 bg-gray-100 px-2 py-1 rounded-full">{documents.length} documents</span>
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-display font-semibold text-gray-900 flex items-center gap-2">
+                    <span>Documents du Client</span>
+                    <span className="text-xs font-normal text-gray-500 bg-gray-100 px-2 py-1 rounded-full">{documents.length} documents</span>
+                  </h3>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => setRequestDocOpen(true)} className="text-gray-600">
+                      <Plus className="w-4 h-4 mr-1.5" />Demander
+                    </Button>
+                    <div className="relative">
+                      <input 
+                        type="file" 
+                        id="admin-doc-upload" 
+                        className="hidden" 
+                        onChange={handleUploadDocument}
+                        disabled={uploadingDoc}
+                      />
+                      <Label htmlFor="admin-doc-upload" className={cn(
+                        "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+                        "bg-vayase-accent text-vayase-night hover:bg-vayase-accent/90 h-9 px-3 cursor-pointer"
+                      )}>
+                        {uploadingDoc ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <UploadCloud className="w-4 h-4 mr-1.5" />}
+                        Uploader
+                      </Label>
+                    </div>
+                  </div>
+                </div>
                 <div className="space-y-3">
                   {documents.map((doc) => (
                     <div key={doc.id} className="flex items-center justify-between p-3 rounded-lg border border-gray-100 bg-gray-50/50">
@@ -1008,10 +1152,18 @@ export default function ClientDetail() {
                         <FileText className="w-5 h-5 text-gray-400" />
                         <div>
                           <p className="text-sm font-medium text-gray-900">{doc.name}</p>
-                          <p className="text-xs text-gray-500 uppercase">{doc.category}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-xs text-gray-500 uppercase">{doc.category}</p>
+                            {doc.file_path === 'pending' && <Badge variant="outline" className="text-[10px] bg-warning/10 text-warning border-warning/20">Attendu</Badge>}
+                          </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-3">
+                        {doc.file_path !== 'pending' && (
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-500 hover:text-vayase-accent" onClick={() => handleDownloadDocument(doc)}>
+                            <Download className="w-4 h-4" />
+                          </Button>
+                        )}
                         <span className="text-xs text-gray-500 flex items-center gap-1">
                           {doc.is_visible_to_client ? <><Eye className="w-3 h-3 text-vayase-accent" /> Visible</> : <><EyeOff className="w-3 h-3" /> Masqué</>}
                         </span>
@@ -1304,6 +1456,33 @@ export default function ClientDetail() {
               className="bg-gradient-accent text-vayase-night font-semibold shadow-glow"
             >
               Appliquer le modèle
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Request Document dialog */}
+      <Dialog open={requestDocOpen} onOpenChange={setRequestDocOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle className="font-display">Demander un document</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Nom du document attendu *</Label>
+              <Input 
+                value={requestDocForm.name} 
+                onChange={e => setRequestDocForm({ ...requestDocForm, name: e.target.value })} 
+                placeholder="Ex: Passeport, Relevé bancaire, etc." 
+                onKeyDown={e => e.key === 'Enter' && handleRequestDocument()}
+              />
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Le client verra cette demande dans son portail avec la mention "Action Requise" et pourra y répondre en uploadant le fichier.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setRequestDocOpen(false)}>{t('common.cancel')}</Button>
+            <Button onClick={handleRequestDocument} className="bg-gradient-accent text-vayase-night font-semibold">
+              Demander au client
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,9 +1,9 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Loader2, FileText, CheckCircle2, Clock, UploadCloud, ArrowRight, ShieldCheck, Download, ExternalLink, Mail, AlertCircle, Info } from 'lucide-react';
+import { Loader2, FileText, CheckCircle2, Clock, UploadCloud, ArrowRight, ShieldCheck, Download, ExternalLink, Mail, AlertCircle, Info, Plus } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,8 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { useState } from 'react';
+import { toast } from 'sonner';
 
 export default function ClientDashboard() {
   const { user } = useAuth();
@@ -58,6 +60,75 @@ export default function ClientDashboard() {
     },
     enabled: !!clientInfo?.id,
   });
+
+  const queryClient = useQueryClient();
+  const [uploadingDocId, setUploadingDocId] = useState<string | null>(null);
+
+  const handleUploadDocument = async (e: React.ChangeEvent<HTMLInputElement>, pendingDocId?: string) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) return toast.error("Le fichier est trop volumineux (max 5MB)");
+
+    const docName = pendingDocId ? documents?.find(d => d.id === pendingDocId)?.name : prompt("Nom du document (ex: Passeport) :", file.name);
+    if (!docName) {
+      e.target.value = '';
+      return;
+    }
+
+    setUploadingDocId(pendingDocId || 'new');
+    
+    const fileExt = file.name.split('.').pop();
+    const cleanDocName = docName.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+    const fileName = `${clientInfo?.id}/${cleanDocName}_${Date.now()}.${fileExt}`;
+    
+    const { error: uploadError } = await supabase.storage
+      .from('client-documents')
+      .upload(fileName, file);
+
+    if (uploadError) {
+      setUploadingDocId(null);
+      e.target.value = '';
+      return toast.error("Erreur lors de l'upload: " + uploadError.message);
+    }
+
+    // 2. Add or update record in documents table
+    if (pendingDocId) {
+      const { error: dbError } = await supabase.from('documents').update({
+        file_path: fileName,
+        file_size: file.size,
+        mime_type: file.type,
+      }).eq('id', pendingDocId);
+      
+      if (dbError) toast.error("Erreur d'enregistrement: " + dbError.message);
+      else toast.success('Document soumis avec succès !');
+    } else {
+      const { error: dbError } = await supabase.from('documents').insert({
+        client_id: clientInfo.id,
+        name: docName,
+        category: 'other',
+        file_path: fileName,
+        file_size: file.size,
+        mime_type: file.type,
+        is_visible_to_client: true,
+        uploaded_by: user?.id
+      });
+      
+      if (dbError) toast.error("Erreur d'enregistrement: " + dbError.message);
+      else toast.success('Document envoyé avec succès !');
+    }
+
+    setUploadingDocId(null);
+    queryClient.invalidateQueries({ queryKey: ['client-documents'] });
+    e.target.value = '';
+  };
+
+  const handleDownloadDocument = async (doc: any) => {
+    if (doc.file_path === 'pending') return;
+    const { data, error } = await supabase.storage.from('client-documents').createSignedUrl(doc.file_path, 3600);
+    if (error) return toast.error("Impossible d'accéder au fichier: " + error.message);
+    window.open(data.signedUrl, '_blank');
+  };
 
   if (isLoadingClient || isLoadingSteps || isLoadingDocs) {
     return (
@@ -265,14 +336,37 @@ export default function ClientDashboard() {
                           </div>
                           <div className="overflow-hidden">
                             <p className="font-semibold text-sm text-gray-900 truncate">{doc.name}</p>
-                            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
-                              {format(new Date(doc.created_at), 'dd MMM yyyy', { locale: fr })}
-                            </p>
+                            <div className="flex items-center gap-2">
+                              <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+                                {format(new Date(doc.created_at), 'dd MMM yyyy', { locale: fr })}
+                              </p>
+                              {doc.file_path === 'pending' && <Badge variant="outline" className="text-[10px] bg-warning/10 text-warning border-warning/20">Action Requise</Badge>}
+                            </div>
                           </div>
                         </div>
-                        <Button variant="ghost" size="icon" className="shrink-0 h-8 w-8 text-muted-foreground hover:text-vayase-accent">
-                          <Download className="w-4 h-4" />
-                        </Button>
+                        
+                        {doc.file_path === 'pending' ? (
+                          <div className="relative">
+                            <input 
+                              type="file" 
+                              id={`upload-${doc.id}`} 
+                              className="hidden" 
+                              onChange={(e) => handleUploadDocument(e, doc.id)}
+                              disabled={uploadingDocId === doc.id}
+                            />
+                            <label htmlFor={`upload-${doc.id}`} className={cn(
+                              "inline-flex items-center justify-center whitespace-nowrap rounded-md text-xs font-medium transition-colors focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50",
+                              "bg-vayase-accent text-vayase-night hover:bg-vayase-accent/90 h-8 px-2 cursor-pointer shadow-sm"
+                            )}>
+                              {uploadingDocId === doc.id ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5 mr-1" />}
+                              Uploader
+                            </label>
+                          </div>
+                        ) : (
+                          <Button variant="ghost" size="icon" className="shrink-0 h-8 w-8 text-muted-foreground hover:text-vayase-accent" onClick={() => handleDownloadDocument(doc)}>
+                            <Download className="w-4 h-4" />
+                          </Button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -282,11 +376,27 @@ export default function ClientDashboard() {
                   </div>
                 )}
                 
-                <Button className="w-full bg-vayase-accent/10 text-vayase-accent hover:bg-vayase-accent hover:text-vayase-night transition-all font-bold border-0 group shadow-none">
-                  <UploadCloud className="w-4 h-4 mr-2" />
-                  Envoyer un document
-                  <ArrowRight className="w-4 h-4 ml-auto opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
-                </Button>
+                <div className="relative">
+                  <input 
+                    type="file" 
+                    id="client-doc-upload" 
+                    className="hidden" 
+                    onChange={(e) => handleUploadDocument(e)}
+                    disabled={uploadingDocId === 'new'}
+                  />
+                  <label htmlFor="client-doc-upload" className={cn(
+                    "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-bold ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+                    "w-full bg-vayase-accent/10 text-vayase-accent hover:bg-vayase-accent hover:text-vayase-night h-10 px-4 cursor-pointer group shadow-none"
+                  )}>
+                    {uploadingDocId === 'new' ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <UploadCloud className="w-4 h-4 mr-2" />
+                    )}
+                    Envoyer un document
+                    <ArrowRight className="w-4 h-4 ml-auto opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
+                  </label>
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -308,11 +418,14 @@ export default function ClientDashboard() {
                   </div>
                   <div>
                     <p className="text-xs text-white/50 font-medium">Email de contact</p>
-                    <p className="text-sm font-semibold truncate">support@vayase.com</p>
+                    <p className="text-sm font-semibold truncate">contact@vayaseconsulting.com</p>
                   </div>
                 </div>
               </div>
-              <Button className="w-full bg-vayase-accent text-vayase-night font-bold hover:bg-white transition-all shadow-glow">
+              <Button 
+                onClick={() => window.location.href = 'mailto:contact@vayaseconsulting.com'}
+                className="w-full bg-vayase-accent text-vayase-night font-bold hover:bg-white transition-all shadow-glow"
+              >
                 Contacter VAYASE
               </Button>
             </CardContent>

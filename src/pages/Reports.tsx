@@ -3,7 +3,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, FileText, Users, Wallet, TrendingUp, Globe } from 'lucide-react';
+import { Download, FileText, Users, Wallet, TrendingUp, Globe, Calendar as CalendarIcon } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { generateClientsReport, generateFinanceReport, exportToExcel } from '@/lib/exports';
 import { BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer, XAxis, YAxis, Tooltip as ReTooltip, CartesianGrid } from 'recharts';
 import { format } from 'date-fns';
@@ -17,6 +19,8 @@ export default function Reports() {
   const isAdminView = hasAnyRole(['super_admin', 'admin']);
   const [data, setData] = useState<any>({ clients: [], payments: [], contracts: [], leads: [], users: [] });
   const [loading, setLoading] = useState(true);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   useEffect(() => {
     (async () => {
@@ -85,7 +89,7 @@ export default function Reports() {
     .map(([userId, conversions]) => ({
       userId,
       name: userNames.get(userId) || userId,
-      conversions,
+      conversions: conversions as number,
     }))
     .sort((a, b) => b.conversions - a.conversions);
 
@@ -98,14 +102,14 @@ export default function Reports() {
     .map(([userId, conversions]) => ({
       userId,
       name: userNames.get(userId) || userId,
-      conversions,
+      conversions: conversions as number,
     }))
     .sort((a, b) => b.conversions - a.conversions);
   const myConversions = user?.id ? (byConverter[user.id] || 0) : 0;
   const myReferralConversions = user?.id ? (byReferrer[user.id] || 0) : 0;
 
   const exportClientsExcel = () => {
-    exportToExcel(clients.map((c: any) => ({
+    exportToExcel(filteredClients.map((c: any) => ({
       Nom: c.full_name, Email: c.email, Téléphone: c.phone,
       Pays: c.destination_country, Visa: c.visa_type,
       Programme: c.program, Statut: c.status,
@@ -115,13 +119,33 @@ export default function Reports() {
   };
 
   const exportPaymentsExcel = () => {
-    exportToExcel(payments.map((p: any) => ({
+    exportToExcel(filteredPayments.map((p: any) => ({
       Référence: p.reference, Montant: p.amount, Devise: p.currency,
       'Date paiement': p.payment_date, 'Échéance': p.due_date,
       Mode: p.payment_method, Statut: p.status,
     })), 'paiements', 'Paiements');
     toast.success('Export Excel généré');
   };
+
+  const filteredClients = clients.filter((c: any) => {
+    if (!startDate && !endDate) return true;
+    const d = new Date(c.created_at);
+    if (startDate && d < new Date(startDate)) return false;
+    if (endDate && d > new Date(endDate + 'T23:59:59')) return false;
+    return true;
+  });
+
+  const filteredPayments = payments.filter((p: any) => {
+    if (!startDate && !endDate) return true;
+    const d = new Date(p.payment_date || p.created_at);
+    if (startDate && d < new Date(startDate)) return false;
+    if (endDate && d > new Date(endDate + 'T23:59:59')) return false;
+    return true;
+  });
+
+  const filteredTotalRevenue = filteredPayments.filter((p: any) => p.status === 'paid').reduce((s: number, p: any) => s + Number(p.amount), 0);
+  const filteredPending = filteredPayments.filter((p: any) => p.status === 'pending').reduce((s: number, p: any) => s + Number(p.amount), 0);
+  const filteredOverdue = filteredPayments.filter((p: any) => p.status === 'overdue').reduce((s: number, p: any) => s + Number(p.amount), 0);
 
   return (
     <div className="space-y-6">
@@ -164,22 +188,35 @@ export default function Reports() {
         </TabsList>
 
         <TabsContent value="exports" className="mt-6 space-y-4">
+          <Card className="p-4 mb-4 flex flex-col md:flex-row gap-4 items-end bg-secondary/30">
+            <div className="space-y-1.5 w-full md:w-auto">
+              <Label className="text-xs uppercase tracking-wider text-muted-foreground">Date de début</Label>
+              <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full md:w-[200px]" />
+            </div>
+            <div className="space-y-1.5 w-full md:w-auto">
+              <Label className="text-xs uppercase tracking-wider text-muted-foreground">Date de fin</Label>
+              <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full md:w-[200px]" />
+            </div>
+            <div className="pb-1 text-sm text-muted-foreground ml-auto">
+              Filtre appliqué sur les {filteredClients.length} clients et {filteredPayments.length} paiements.
+            </div>
+          </Card>
           <div className="grid md:grid-cols-2 gap-4">
             <Card className="p-6">
               <Users className="w-8 h-8 text-vayase-accent mb-3" />
               <h3 className="font-display font-semibold mb-1">Rapport Clients</h3>
-              <p className="text-sm text-muted-foreground mb-4">{clients.length} clients · Liste complète</p>
+              <p className="text-sm text-muted-foreground mb-4">{filteredClients.length} clients trouvés</p>
               <div className="flex gap-2">
-                <Button onClick={() => generateClientsReport(clients)} className="gap-2"><Download className="w-4 h-4" />PDF</Button>
+                <Button onClick={() => generateClientsReport(filteredClients)} className="gap-2"><Download className="w-4 h-4" />PDF</Button>
                 <Button variant="outline" onClick={exportClientsExcel} className="gap-2"><Download className="w-4 h-4" />Excel</Button>
               </div>
             </Card>
             <Card className="p-6">
               <Wallet className="w-8 h-8 text-emerald-500 mb-3" />
               <h3 className="font-display font-semibold mb-1">Rapport Financier</h3>
-              <p className="text-sm text-muted-foreground mb-4">{payments.length} paiements · Synthèse</p>
+              <p className="text-sm text-muted-foreground mb-4">{filteredPayments.length} paiements trouvés</p>
               <div className="flex gap-2">
-                <Button onClick={() => generateFinanceReport(payments, { total: totalRevenue, paid: paidAmount, pending: pendingAmount, overdue: overdueAmount })} className="gap-2"><Download className="w-4 h-4" />PDF</Button>
+                <Button onClick={() => generateFinanceReport(filteredPayments, { total: filteredTotalRevenue + filteredPending + filteredOverdue, paid: filteredTotalRevenue, pending: filteredPending, overdue: filteredOverdue })} className="gap-2"><Download className="w-4 h-4" />PDF</Button>
                 <Button variant="outline" onClick={exportPaymentsExcel} className="gap-2"><Download className="w-4 h-4" />Excel</Button>
               </div>
             </Card>

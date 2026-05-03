@@ -75,7 +75,7 @@ export function generatePaymentReceipt(data: {
   doc.setFontSize(28);
   doc.setTextColor(...VAYASE_NAVY);
   doc.setFont('helvetica', 'bold');
-  doc.text(`${data.amount.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} ${data.currency}`, 24, 110);
+  doc.text(`${data.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })} ${data.currency}`, 24, 110);
 
   doc.setTextColor(0, 0, 0);
   doc.setFontSize(10);
@@ -148,7 +148,7 @@ export function generateFinanceReport(payments: any[], summary: { total: number;
     doc.setFontSize(11);
     doc.setTextColor(...VAYASE_NAVY);
     doc.setFont('helvetica', 'bold');
-    doc.text(`${c.value.toLocaleString('fr-FR')} XOF`, x + 4, 68);
+    doc.text(`${c.value.toLocaleString('en-US')} XOF`, x + 4, 68);
     doc.setFont('helvetica', 'normal');
   });
 
@@ -158,7 +158,7 @@ export function generateFinanceReport(payments: any[], summary: { total: number;
     body: payments.map(p => [
       p.payment_date ? format(new Date(p.payment_date), 'dd/MM/yyyy') : '—',
       p.reference || '—',
-      `${Number(p.amount).toLocaleString('fr-FR')} ${p.currency}`,
+      `${Number(p.amount).toLocaleString('en-US')} ${p.currency}`,
       p.payment_method || '—',
       p.status,
     ]),
@@ -208,8 +208,8 @@ export function generateGlobalSummaryReport(data: {
     theme: 'grid',
     head: [['Indicateur', 'Valeur']],
     body: [
-      ['Revenus contrats', `${data.totalRevenue.toLocaleString('fr-FR')} XOF`],
-      ['Montant encaisse', `${data.paidRevenue.toLocaleString('fr-FR')} XOF`],
+      ['Revenus contrats', `${data.totalRevenue.toLocaleString('en-US')} XOF`],
+      ['Montant encaisse', `${data.paidRevenue.toLocaleString('en-US')} XOF`],
       ['Date export', format(new Date(), 'dd/MM/yyyy HH:mm')],
     ],
     headStyles: { fillColor: VAYASE_NAVY, textColor: 255 },
