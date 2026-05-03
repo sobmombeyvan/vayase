@@ -125,9 +125,10 @@ export default function ClientDashboard() {
 
   const handleDownloadDocument = async (doc: any) => {
     if (doc.file_path === 'pending') return;
-    const { data, error } = await supabase.storage.from('client-documents').createSignedUrl(doc.file_path, 3600);
+    const { data, error } = await supabase.storage.from('client-documents').createSignedUrl(doc.file_path, 3600, { download: doc.name });
     if (error) return toast.error("Impossible d'accéder au fichier: " + error.message);
-    window.open(data.signedUrl, '_blank');
+    
+    window.location.href = data.signedUrl;
   };
 
   if (isLoadingClient || isLoadingSteps || isLoadingDocs) {

@@ -94,13 +94,10 @@ export default function Documents() {
     }
   };
 
-  const download = async (path: string, name: string) => {
-    const { data, error } = await supabase.storage.from('client-documents').createSignedUrl(path, 60);
+  const handleDownload = async (path: string, name: string) => {
+    const { data, error } = await supabase.storage.from('client-documents').createSignedUrl(path, 60, { download: name });
     if (error) { toast.error(error.message); return; }
-    const a = document.createElement('a');
-    a.href = data.signedUrl;
-    a.download = name;
-    a.click();
+    window.location.href = data.signedUrl;
   };
 
   const remove = async (id: string, path: string) => {
@@ -209,7 +206,7 @@ export default function Documents() {
                   <div>{format(new Date(d.created_at), 'dd/MM/yyyy')}</div>
                 </div>
                 <div className="flex gap-1">
-                  <Button variant="ghost" size="icon" onClick={() => download(d.file_path, d.name)} className="h-8 w-8">
+                  <Button variant="ghost" size="icon" onClick={() => handleDownload(d.file_path, d.name)} className="h-8 w-8">
                     <Download className="w-3.5 h-3.5" />
                   </Button>
                   {canDelete && (

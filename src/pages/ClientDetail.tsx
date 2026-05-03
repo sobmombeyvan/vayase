@@ -552,9 +552,10 @@ export default function ClientDetail() {
 
   const handleDownloadDocument = async (doc: any) => {
     if (doc.file_path === 'pending') return;
-    const { data, error } = await supabase.storage.from('client-documents').createSignedUrl(doc.file_path, 3600);
-    if (error) return toast.error("Impossible d'accéder au fichier: " + error.message);
-    window.open(data.signedUrl, '_blank');
+    const { data, error } = await supabase.storage.from('client-documents').createSignedUrl(doc.file_path, 3600, { download: doc.name });
+    if (error) return toast.error("Impossible de générer le lien de téléchargement");
+    
+    window.location.href = data.signedUrl;
   };
 
   const handleCreateClientAccess = async () => {
