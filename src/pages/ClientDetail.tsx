@@ -88,7 +88,7 @@ export default function ClientDetail() {
       supabase.from('client_steps').select('*').eq('client_id', id).order('step_order'),
       supabase.from('contracts').select('*').eq('client_id', id),
       supabase.from('payments').select('*').eq('client_id', id).order('due_date'),
-      supabase.from('profiles').select('id, full_name').order('full_name'),
+      supabase.from('profiles').select('id, full_name, user_roles(role)').order('full_name'),
       supabase.from('client_step_notes').select('*').eq('client_id', id).order('created_at', { ascending: false }),
       supabase.from('procedure_templates').select('id, name, destination_country, visa_type, is_active').eq('is_active', true).order('name'),
       supabase.from('leads').select('id, full_name, converted_by_user_id, referred_by_user_id').eq('converted_client_id', id).maybeSingle(),
@@ -98,7 +98,11 @@ export default function ClientDetail() {
       setSteps(sRes.data ?? []);
       setContracts(ctRes.data ?? []);
       setPayments(pRes.data ?? []);
-      setUsers(uRes.data ?? []);
+      
+      const staffOnly = (uRes.data ?? []).filter((u: any) => 
+        u.user_roles && u.user_roles.some((r: any) => r.role !== 'client')
+      );
+      setUsers(staffOnly);
       setTemplates(tplRes.data ?? []);
       setSourceLead(leadRes.data ?? null);
       setDocuments(docRes.data ?? []);

@@ -59,11 +59,17 @@ export default function Clients() {
     setLoading(true);
     const [clientsRes, usersRes, tplRes] = await Promise.all([
       supabase.from('clients').select('*').order('created_at', { ascending: false }),
-      supabase.from('profiles').select('id, full_name').order('full_name'),
+      supabase.from('profiles').select('id, full_name, user_roles(role)').order('full_name'),
       supabase.from('procedure_templates').select('id, name, destination_country, visa_type, is_active').eq('is_active', true).order('name'),
     ]);
     const { data, error } = clientsRes;
-    if (!usersRes.error) setUsers(usersRes.data ?? []);
+    if (!usersRes.error) {
+      // Only include users who have at least one role that is NOT 'client'
+      const staffOnly = (usersRes.data ?? []).filter((u: any) => 
+        u.user_roles && u.user_roles.some((r: any) => r.role !== 'client')
+      );
+      setUsers(staffOnly);
+    }
     if (!tplRes.error) setTemplates(tplRes.data ?? []);
     if (error) {
       toast.error(error.message);
