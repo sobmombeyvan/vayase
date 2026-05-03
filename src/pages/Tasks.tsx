@@ -11,7 +11,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CheckCircle2, ClipboardList, Clock3, Plus, Trash2 } from 'lucide-react';
+import { CheckCircle2, ClipboardList, Clock3, Plus, Trash2, Check, ChevronsUpDown } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { cn } from '@/lib/utils';
 
 type TaskStatus = 'todo' | 'in_progress' | 'done' | 'cancelled';
 type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
@@ -47,7 +50,7 @@ export default function Tasks() {
   const [createForm, setCreateForm] = useState({
     title: '',
     description: '',
-    assigned_to: '',
+    assigned_to: [] as string[],
     due_date: '',
     priority: 'medium' as TaskPriority,
   });
@@ -94,26 +97,34 @@ export default function Tasks() {
   }, [user?.id, isAdmin]);
 
   const createTask = async () => {
-    if (!createForm.title.trim() || !createForm.assigned_to) {
-      toast.error('Titre et utilisateur obligatoire');
+    if (!createForm.title.trim() || createForm.assigned_to.length === 0) {
+      toast.error('Titre et au moins un utilisateur obligatoire');
       return;
     }
-    const { error } = await supabase.from('tasks').insert({
-      title: createForm.title.trim(),
-      description: createForm.description.trim() || null,
-      assigned_to: createForm.assigned_to,
-      due_date: createForm.due_date || null,
-      priority: createForm.priority,
-      created_by: user?.id ?? null,
-      status: 'todo',
-    });
-    if (error) {
-      toast.error(error.message);
-      return;
+    
+    setLoading(true);
+    try {
+      const inserts = createForm.assigned_to.map(userId => ({
+        title: createForm.title.trim(),
+        description: createForm.description.trim() || null,
+        assigned_to: userId,
+        due_date: createForm.due_date || null,
+        priority: createForm.priority as TaskPriority,
+        created_by: user?.id,
+        status: 'todo' as TaskStatus,
+      }));
+
+      const { error } = await supabase.from('tasks').insert(inserts);
+      if (error) throw error;
+
+      toast.success(`${inserts.length} tache(s) creee(s)`);
+      setCreateForm({ title: '', description: '', assigned_to: [], due_date: '', priority: 'medium' });
+      load();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setLoading(false);
     }
-    toast.success('Tache creee');
-    setCreateForm({ title: '', description: '', assigned_to: '', due_date: '', priority: 'medium' });
-    load();
   };
 
   const updateTaskStatus = async (taskId: string, status: TaskStatus) => {
@@ -167,19 +178,56 @@ export default function Tasks() {
               />
             </div>
             <div className="space-y-1">
-              <Label>Assigne a</Label>
-              <Select value={createForm.assigned_to} onValueChange={(v) => setCreateForm((p) => ({ ...p, assigned_to: v }))}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choisir un utilisateur" />
-                </SelectTrigger>
-                <SelectContent>
-                  {profiles.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.full_name || p.id}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Assigne a (plusieurs possibles)</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    className="w-full justify-between font-normal"
+                  >
+                    {createForm.assigned_to.length > 0
+                      ? `${createForm.assigned_to.length} selectionne(s)`
+                      : "Choisir des utilisateurs"}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-full p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Rechercher..." />
+                    <CommandList>
+                      <CommandEmpty>Aucun utilisateur trouve.</CommandEmpty>
+                      <CommandGroup>
+                        {profiles.map((p) => (
+                          <CommandItem
+                            key={p.id}
+                            value={p.full_name || p.id}
+                            onSelect={() => {
+                              setCreateForm(prev => {
+                                const isSelected = prev.assigned_to.includes(p.id);
+                                return {
+                                  ...prev,
+                                  assigned_to: isSelected
+                                    ? prev.assigned_to.filter(id => id !== p.id)
+                                    : [...prev.assigned_to, p.id]
+                                };
+                              });
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                createForm.assigned_to.includes(p.id) ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            {p.full_name || p.id}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
             <div className="space-y-1">
               <Label>Deadline</Label>
