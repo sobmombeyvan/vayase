@@ -2,7 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Loader2, FileText, CheckCircle2, Clock, UploadCloud, ArrowRight, ShieldCheck, Download, ExternalLink, Mail } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Loader2, FileText, CheckCircle2, Clock, UploadCloud, ArrowRight, ShieldCheck, Download, ExternalLink, Mail, AlertCircle, Info } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
@@ -147,6 +148,27 @@ export default function ClientDashboard() {
           </div>
         </div>
       </section>
+
+      {clientInfo?.notes && (
+        <Alert className="bg-blue-50 border-blue-200 text-blue-800 animate-fade-in shadow-sm">
+          <Info className="h-5 w-5 text-blue-600" />
+          <AlertTitle className="text-blue-900 font-semibold">Message de votre conseiller</AlertTitle>
+          <AlertDescription className="mt-2 text-sm leading-relaxed whitespace-pre-wrap">
+            {clientInfo.notes}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {steps?.some((s: any) => s.status === 'blocked') && (
+        <Alert variant="destructive" className="animate-fade-in shadow-sm">
+          <AlertCircle className="h-5 w-5" />
+          <AlertTitle className="font-semibold">Action Requise de votre part</AlertTitle>
+          <AlertDescription className="mt-2 text-sm leading-relaxed">
+            Certaines étapes de votre procédure sont actuellement bloquées ou en attente d'une action de votre part (ex: documents manquants, paiement requis). 
+            Veuillez consulter les détails dans la timeline ci-dessous ou contacter votre conseiller.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <motion.div 
         variants={container}
