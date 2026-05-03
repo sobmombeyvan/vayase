@@ -64,17 +64,27 @@ export default function Tasks() {
   const load = async () => {
     if (!user) return;
     setLoading(true);
-    const [profilesRes, tasksRes] = await Promise.all([
+    const [profilesRes, rolesRes, tasksRes] = await Promise.all([
       supabase.from('profiles').select('id, full_name').order('full_name'),
+      supabase.from('user_roles').select('user_id, role'),
       isAdmin
         ? supabase.from('tasks').select('*').order('created_at', { ascending: false })
         : supabase.from('tasks').select('*').eq('assigned_to', user.id).order('created_at', { ascending: false }),
     ]);
 
     if (profilesRes.error) toast.error(profilesRes.error.message);
+    if (rolesRes.error) toast.error(rolesRes.error.message);
     if (tasksRes.error) toast.error(tasksRes.error.message);
 
-    setProfiles(profilesRes.data || []);
+    const clientUserIds = new Set(
+      (rolesRes.data || [])
+        .filter(r => r.role === 'client')
+        .map(r => r.user_id)
+    );
+
+    const staffProfiles = (profilesRes.data || []).filter(p => !clientUserIds.has(p.id));
+
+    setProfiles(staffProfiles);
     setTasks(tasksRes.data || []);
     setLoading(false);
   };
