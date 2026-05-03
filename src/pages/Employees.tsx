@@ -47,7 +47,7 @@ export default function Employees() {
   const load = async () => {
     setLoading(true);
     const [profs, urs, perms, log, cls, steps, notes] = await Promise.all([
-      supabase.from('profiles').select('*').order('created_at', { ascending: false }),
+      supabase.from('profiles').select('*, user_roles(role)').order('created_at', { ascending: false }),
       supabase.from('user_roles').select('*'),
       supabase.from('agent_country_permissions').select('*'),
       supabase.from('activity_log').select('*').order('created_at', { ascending: false }).limit(50),
@@ -55,7 +55,17 @@ export default function Employees() {
       supabase.from('client_steps').select('id, responsible_id, status'),
       supabase.from('client_step_notes').select('id, user_id'),
     ]);
-    setEmployees(profs.data || []);
+    
+    // Filtrer pour ne garder que le personnel (exclure ceux qui ont uniquement ou le rôle 'client')
+    const allProfs = profs.data || [];
+    const staffOnly = allProfs.filter((u: any) => {
+      const roles = u.user_roles || [];
+      const hasClientRole = roles.some((r: any) => r.role === 'client');
+      // On exclut les utilisateurs qui ont le rôle 'client'
+      return !hasClientRole;
+    });
+
+    setEmployees(staffOnly);
     setAllRolesData(urs.data || []);
     setPermissions(perms.data || []);
     setActivityLog(log.data || []);
