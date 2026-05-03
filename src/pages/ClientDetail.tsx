@@ -80,6 +80,8 @@ export default function ClientDetail() {
   const [clientAccessOpen, setClientAccessOpen] = useState(false);
   const [clientPassword, setClientPassword] = useState('');
   const [creatingAccess, setCreatingAccess] = useState(false);
+  const [templateConfirmOpen, setTemplateConfirmOpen] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
 
   const load = () => {
     if (!id) return;
@@ -176,6 +178,8 @@ export default function ClientDetail() {
     const payload = {
       ...editForm,
       procedure_template_id: nextTemplateId,
+      agent_id: editForm.agent_id === 'none' ? null : editForm.agent_id,
+      referred_by_user_id: editForm.referred_by_user_id === 'none' ? null : editForm.referred_by_user_id,
       date_of_birth: editForm.date_of_birth || null,
       total_fees_due: editForm.total_fees_due === '' || editForm.total_fees_due == null ? null : Number(editForm.total_fees_due),
     };
@@ -308,8 +312,6 @@ export default function ClientDetail() {
 
   const handleApplyTemplate = async (tplId: string) => {
     if (!tplId || !id) return;
-    const confirm = window.confirm("Souhaitez-vous appliquer ce modèle ? Cela ajoutera de nouvelles étapes à la timeline.");
-    if (!confirm) return;
 
     setLoading(true);
     const { data: tplSteps, error: sErr } = await supabase
@@ -658,26 +660,36 @@ export default function ClientDetail() {
             </div>
 
             {canManageSteps && (
-              <div className="mb-6 rounded-lg border border-border p-3 sm:p-4 space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="font-semibold text-sm">Ajouter une étape au client</div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground whitespace-nowrap">Ou appliquer un modèle :</span>
-                    <Select onValueChange={(val) => handleApplyTemplate(val)}>
-                      <SelectTrigger className="w-[200px] h-8 text-xs bg-secondary/50 border-transparent">
+              <div className="space-y-4 mb-8">
+                {/* Section Appliquer un modèle - Plus visible */}
+                <div className="bg-gradient-accent/5 border border-vayase-accent/20 rounded-xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-vayase-accent/10 flex items-center justify-center text-vayase-accent">
+                      <Shield className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="font-display font-bold text-sm text-gray-900">Appliquer une procédure standard</div>
+                      <p className="text-xs text-gray-500 mt-0.5">Ajoutez automatiquement les étapes prédéfinies à la timeline</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 min-w-[240px]">
+                    <Select onValueChange={(val) => { setSelectedTemplateId(val); setTemplateConfirmOpen(true); }}>
+                      <SelectTrigger className="w-full h-10 bg-white border-gray-200 shadow-sm focus:ring-vayase-accent">
                         <SelectValue placeholder="Choisir un modèle..." />
                       </SelectTrigger>
                       <SelectContent>
                         {templates.map(tpl => (
-                          <SelectItem key={tpl.id} value={tpl.id}>
-                            {tpl.name}
-                          </SelectItem>
+                          <SelectItem key={tpl.id} value={tpl.id}>{tpl.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+
+                {/* Section Ajouter étape manuelle */}
+                <div className="rounded-lg border border-border p-4 space-y-3 bg-secondary/20">
+                  <div className="font-semibold text-sm">Ajouter une étape manuelle</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div className="space-y-1">
                     <Label>Nom étape *</Label>
                     <Input
@@ -707,6 +719,7 @@ export default function ClientDetail() {
                 <Button size="sm" variant="outline" onClick={addClientStep}>
                   <Plus className="w-4 h-4 mr-1.5" />Ajouter l'étape
                 </Button>
+                </div>
               </div>
             )}
 
@@ -1254,6 +1267,43 @@ export default function ClientDetail() {
             <Button onClick={handleCreateClientAccess} disabled={creatingAccess} className="bg-gradient-accent text-vayase-night font-semibold">
               {creatingAccess ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
               Générer l'accès
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Confirm Template dialog */}
+      <Dialog open={templateConfirmOpen} onOpenChange={setTemplateConfirmOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-vayase-accent" />
+              Confirmer l'application
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-gray-600 leading-relaxed">
+              Souhaitez-vous appliquer ce modèle de procédure ? 
+              Cela ajoutera automatiquement les étapes prédéfinies à la timeline du client.
+            </p>
+            {selectedTemplateId && (
+              <div className="mt-4 p-3 bg-secondary/50 rounded-lg border border-border">
+                <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Modèle sélectionné</div>
+                <div className="font-semibold text-sm">
+                  {templates.find(t => t.id === selectedTemplateId)?.name}
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="ghost" onClick={() => setTemplateConfirmOpen(false)}>Annuler</Button>
+            <Button 
+              onClick={() => {
+                if (selectedTemplateId) handleApplyTemplate(selectedTemplateId);
+                setTemplateConfirmOpen(false);
+              }} 
+              className="bg-gradient-accent text-vayase-night font-semibold shadow-glow"
+            >
+              Appliquer le modèle
             </Button>
           </DialogFooter>
         </DialogContent>
