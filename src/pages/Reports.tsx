@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, FileText, Users, Wallet, TrendingUp, Globe, Calendar as CalendarIcon } from 'lucide-react';
+import { Download, FileText, Users, Wallet, TrendingUp, Globe, Calendar as CalendarIcon, ChevronDown, ChevronRight, UserCheck } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { generateClientsReport, generateFinanceReport, exportToExcel } from '@/lib/exports';
@@ -11,35 +13,45 @@ import { BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer, XAxis, YAxis, 
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { loadStaffMembers, buildEmployeeReferralSummaries, type EmployeeReferralSummary } from '@/lib/staff';
+import { staffDisplayName } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 
 const COLORS = ['#49BFFF', '#7C3AED', '#10B981', '#F59E0B', '#EF4444', '#EC4899'];
 
 export default function Reports() {
+  const navigate = useNavigate();
   const { user, hasAnyRole } = useAuth();
   const isAdminView = hasAnyRole(['super_admin', 'admin']);
   const [data, setData] = useState<any>({ clients: [], payments: [], contracts: [], leads: [], users: [] });
+  const [staff, setStaff] = useState<EmployeeReferralSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [expandedReferrer, setExpandedReferrer] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
-      const [c, p, ct] = await Promise.all([
+      const [c, p, ct, staffRes] = await Promise.all([
         supabase.from('clients').select('*'),
         supabase.from('payments').select('*'),
         supabase.from('contracts').select('*'),
+        loadStaffMembers(),
       ]);
       const [leadsRes, usersRes] = await Promise.all([
         supabase.from('leads').select('id, status, referred_by_user_id, converted_by_user_id'),
         supabase.from('profiles').select('id, full_name'),
       ]);
+      const clients = c.data || [];
       setData({
-        clients: c.data || [],
+        clients,
         payments: p.data || [],
         contracts: ct.data || [],
         leads: leadsRes.data || [],
         users: usersRes.data || [],
       });
+      setStaff(buildEmployeeReferralSummaries(staffRes.data, clients));
+      if (staffRes.error) toast.error(staffRes.error);
       setLoading(false);
     })();
   }, []);
@@ -135,6 +147,46 @@ export default function Reports() {
     return true;
   });
 
+  const referralSummaries = buildEmployeeReferralSummaries(
+    staff.map(({ referredClients, ...member }) => member),
+    filteredClients,
+  );
+  const visibleReferralSummaries = isAdminView
+    ? referralSummaries
+    : referralSummaries.filter(s => s.id === user?.id);
+  const totalReferredClients = filteredClients.filter((c: any) => c.referred_by_user_id).length;
+  const myReferredClients = user?.id
+    ? (referralSummaries.find(s => s.id === user.id)?.referredClients.length ?? 0)
+    : 0;
+  const referralChartData = referralSummaries
+    .filter(s => s.referredClients.length > 0)
+    .map(s => ({
+      name: s.full_name?.split(' ')[0] || staffDisplayName(s),
+      count: s.referredClients.length,
+    }));
+
+  const exportReferralsExcel = () => {
+    const rows = referralSummaries.flatMap(s =>
+      s.referredClients.length === 0
+        ? [{
+            Employé: staffDisplayName(s),
+            Client: '—',
+            Destination: '—',
+            Statut: '—',
+            'Date création': '—',
+          }]
+        : s.referredClients.map(c => ({
+            Employé: staffDisplayName(s),
+            Client: c.full_name,
+            Destination: c.destination_country || '—',
+            Statut: c.status,
+            'Date création': format(new Date(c.created_at), 'dd/MM/yyyy'),
+          })),
+    );
+    exportToExcel(rows, 'parrainages-clients', 'Parrainages');
+    toast.success('Export Excel généré');
+  };
+
   const filteredPayments = payments.filter((p: any) => {
     if (!startDate && !endDate) return true;
     const d = new Date(p.payment_date || p.created_at);
@@ -170,22 +222,168 @@ export default function Reports() {
           </Card>
         ))}
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="p-4">
           <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Mes leads convertis</p>
           <p className="text-2xl font-display font-bold mt-1">{myConversions}</p>
         </Card>
         <Card className="p-4">
-          <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Mes referrals convertis</p>
+          <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Mes prospects référés (convertis)</p>
           <p className="text-2xl font-display font-bold mt-1">{myReferralConversions}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Mes clients référés</p>
+          <p className="text-2xl font-display font-bold mt-1">{myReferredClients}</p>
         </Card>
       </div>
 
-      <Tabs defaultValue="exports">
+      <Tabs defaultValue="referrals">
         <TabsList>
+          <TabsTrigger value="referrals">Parrainages</TabsTrigger>
           <TabsTrigger value="exports">Exports</TabsTrigger>
           <TabsTrigger value="charts">Graphiques</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="referrals" className="mt-6 space-y-4">
+          <Card className="p-4 flex flex-col md:flex-row gap-4 items-end bg-secondary/30">
+            <div className="space-y-1.5 w-full md:w-auto">
+              <Label className="text-xs uppercase tracking-wider text-muted-foreground">Date de début</Label>
+              <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full md:w-[200px]" />
+            </div>
+            <div className="space-y-1.5 w-full md:w-auto">
+              <Label className="text-xs uppercase tracking-wider text-muted-foreground">Date de fin</Label>
+              <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full md:w-[200px]" />
+            </div>
+            <Button variant="outline" onClick={exportReferralsExcel} className="gap-2 ml-auto">
+              <Download className="w-4 h-4" />Export Excel
+            </Button>
+          </Card>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card className="p-4">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center mb-3 text-vayase-accent bg-vayase-accent/10">
+                <UserCheck className="w-5 h-5" />
+              </div>
+              <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Clients avec parrain</p>
+              <p className="text-2xl font-display font-bold mt-1">{totalReferredClients}</p>
+            </Card>
+            <Card className="p-4">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center mb-3 text-emerald-500 bg-emerald-500/10">
+                <Users className="w-5 h-5" />
+              </div>
+              <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Employés actifs (parrainage)</p>
+              <p className="text-2xl font-display font-bold mt-1">
+                {referralSummaries.filter(s => s.referredClients.length > 0).length}
+              </p>
+            </Card>
+            <Card className="p-4">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center mb-3 text-purple-500 bg-purple-500/10">
+                <TrendingUp className="w-5 h-5" />
+              </div>
+              <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Meilleur parrain</p>
+              <p className="text-lg font-display font-bold mt-1 truncate">
+                {referralSummaries[0]?.referredClients.length
+                  ? staffDisplayName(referralSummaries[0])
+                  : '—'}
+              </p>
+              {referralSummaries[0]?.referredClients.length ? (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {referralSummaries[0].referredClients.length} client{referralSummaries[0].referredClients.length > 1 ? 's' : ''}
+                </p>
+              ) : null}
+            </Card>
+          </div>
+
+          {referralChartData.length > 0 && isAdminView && (
+            <Card className="p-5">
+              <h3 className="font-display font-semibold mb-4">Clients référés par employé</h3>
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={referralChartData}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                  <XAxis dataKey="name" fontSize={11} />
+                  <YAxis fontSize={11} allowDecimals={false} />
+                  <ReTooltip />
+                  <Bar dataKey="count" fill="#49BFFF" name="Clients référés" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </Card>
+          )}
+
+          <Card className="p-5">
+            <h3 className="font-display font-semibold mb-1">Résumé par employé</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              {isAdminView
+                ? 'Liste des clients référés par chaque membre de l\'équipe.'
+                : 'Vos clients référés.'}
+            </p>
+            {visibleReferralSummaries.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Aucun employé trouvé.</p>
+            ) : (
+              <div className="space-y-2">
+                {visibleReferralSummaries.map((summary, index) => {
+                  const isExpanded = expandedReferrer === summary.id;
+                  return (
+                    <div key={summary.id} className="rounded-lg border border-border overflow-hidden">
+                      <button
+                        type="button"
+                        className="w-full flex items-center justify-between px-4 py-3 hover:bg-secondary/40 transition-colors text-left"
+                        onClick={() => setExpandedReferrer(isExpanded ? null : summary.id)}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          {isAdminView && (
+                            <span className="text-xs text-muted-foreground font-semibold w-6">#{index + 1}</span>
+                          )}
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold truncate">{staffDisplayName(summary)}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {summary.referredClients.length} client{summary.referredClients.length !== 1 ? 's' : ''} référé{summary.referredClients.length !== 1 ? 's' : ''}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Badge variant="outline" className="text-[10px] uppercase tracking-wider">
+                            {summary.referredClients.length}
+                          </Badge>
+                          {isExpanded
+                            ? <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                            : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+                        </div>
+                      </button>
+                      {isExpanded && (
+                        <div className="border-t border-border bg-secondary/20">
+                          {summary.referredClients.length === 0 ? (
+                            <p className="px-4 py-3 text-sm text-muted-foreground">Aucun client référé pour cet employé.</p>
+                          ) : (
+                            <div className="divide-y divide-border">
+                              {summary.referredClients.map(client => (
+                                <button
+                                  key={client.id}
+                                  type="button"
+                                  className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-secondary/50 transition-colors text-left"
+                                  onClick={() => navigate(`/clients/${client.id}`)}
+                                >
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-medium truncate">{client.full_name}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {client.destination_country || 'Destination non définie'}
+                                      {' · '}
+                                      {format(new Date(client.created_at), 'dd/MM/yyyy')}
+                                    </p>
+                                  </div>
+                                  <Badge className={cn('text-[10px] uppercase shrink-0 ml-2')}>{client.status}</Badge>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+        </TabsContent>
 
         <TabsContent value="exports" className="mt-6 space-y-4">
           <Card className="p-4 mb-4 flex flex-col md:flex-row gap-4 items-end bg-secondary/30">
@@ -262,7 +460,7 @@ export default function Reports() {
           </Card>
 
           <Card className="p-5 md:col-span-2">
-            <h3 className="font-display font-semibold mb-4">Conversions par référent</h3>
+            <h3 className="font-display font-semibold mb-4">Prospects convertis par référent (leads)</h3>
             {referralLeaderboard.length === 0 ? (
               <p className="text-sm text-muted-foreground">Aucune conversion liée à un référent pour le moment.</p>
             ) : (

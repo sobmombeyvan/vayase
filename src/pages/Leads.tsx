@@ -9,11 +9,12 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { cn, formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency, staffDisplayName, isMissingClientsReferralColumnError } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { DESTINATION_COUNTRIES } from '@/lib/destinations';
+import { loadStaffMembers } from '@/lib/staff';
 
 const sourceIcons: Record<string, any> = {
   facebook: Facebook, whatsapp: MessageCircle, website: Globe, instagram: Instagram, referral: UsersIcon, other: Globe,
@@ -106,14 +107,9 @@ export default function Leads() {
 
   useEffect(() => {
     loadLeads();
-    supabase
-      .from('profiles')
-      .select('id, full_name')
-      .order('full_name', { ascending: true })
-      .then(({ data, error }) => {
-        if (error) return;
-        setUsers(data ?? []);
-      });
+    loadStaffMembers().then(({ data, error }) => {
+      if (!error) setUsers(data);
+    });
   }, []);
 
   const filtered = leads.filter(l => !search || l.full_name.toLowerCase().includes(search.toLowerCase()));
@@ -226,20 +222,33 @@ export default function Leads() {
       window.location.href = `/clients/${lead.converted_client_id}`;
       return;
     }
-    const { data: createdClient, error: cErr } = await supabase
+    const clientPayload: Record<string, unknown> = {
+      full_name: lead.full_name,
+      email: lead.email || null,
+      phone: lead.phone || null,
+      destination_country: lead.destination_country || null,
+      agent_id: lead.assigned_to ?? null,
+      notes: lead.notes || null,
+      status: 'standard',
+      urgency: 'normal',
+    };
+    if (lead.referred_by_user_id) {
+      clientPayload.referred_by_user_id = lead.referred_by_user_id;
+    }
+
+    let { data: createdClient, error: cErr } = await supabase
       .from('clients')
-      .insert({
-        full_name: lead.full_name,
-        email: lead.email || null,
-        phone: lead.phone || null,
-        destination_country: lead.destination_country || null,
-        agent_id: lead.assigned_to ?? null,
-        notes: lead.notes || null,
-        status: 'standard',
-        urgency: 'normal',
-      })
+      .insert(clientPayload)
       .select('id')
       .single();
+    if (cErr && isMissingClientsReferralColumnError(cErr.message)) {
+      delete clientPayload.referred_by_user_id;
+      ({ data: createdClient, error: cErr } = await supabase
+        .from('clients')
+        .insert(clientPayload)
+        .select('id')
+        .single());
+    }
     if (cErr) return toast.error(cErr.message);
 
     let { error: convertErr } = await supabase
@@ -490,7 +499,7 @@ export default function Leads() {
                     <SelectItem value="none">Aucun</SelectItem>
                     {users.map(u => (
                       <SelectItem key={u.id} value={u.id}>
-                        {u.full_name || u.id}
+                        {staffDisplayName(u)}
                       </SelectItem>
                     ))}
                   </SelectContent>
