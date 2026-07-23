@@ -14,12 +14,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ArrowLeft, Mail, Phone, MapPin, Calendar, Briefcase, Globe, User, FileText, Wallet, CheckCircle2, Circle, Clock, AlertCircle, Loader2, Pencil, Plus, Trash2, ArrowUp, ArrowDown, Key, Shield, Eye, EyeOff, UploadCloud, Download, Printer } from 'lucide-react';
 import { supabaseAdminClient } from '@/lib/supabase-admin';
 import { Switch } from '@/components/ui/switch';
-import { cn, formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency, staffDisplayName } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { generatePaymentReceipt } from '@/lib/exports';
 import { DESTINATION_COUNTRIES } from '@/lib/destinations';
+import { loadStaffMembers } from '@/lib/staff';
 
 const statusStyles: Record<string, string> = {
   vip: 'bg-gradient-accent text-vayase-night border-0',
@@ -95,21 +96,17 @@ export default function ClientDetail() {
       supabase.from('client_steps').select('*').eq('client_id', id).order('step_order'),
       supabase.from('contracts').select('*').eq('client_id', id),
       supabase.from('payments').select('*').eq('client_id', id).order('due_date'),
-      supabase.from('profiles').select('id, full_name, user_roles(role)').order('full_name'),
+      loadStaffMembers(),
       supabase.from('client_step_notes').select('*').eq('client_id', id).order('created_at', { ascending: false }),
       supabase.from('procedure_templates').select('id, name, destination_country, visa_type, is_active').eq('is_active', true).order('name'),
       supabase.from('leads').select('id, full_name, converted_by_user_id, referred_by_user_id').eq('converted_client_id', id).maybeSingle(),
       supabase.from('documents').select('*').eq('client_id', id).order('created_at', { ascending: false }),
-    ]).then(([cRes, sRes, ctRes, pRes, uRes, nRes, tplRes, leadRes, docRes]) => {
+    ]).then(([cRes, sRes, ctRes, pRes, staffRes, nRes, tplRes, leadRes, docRes]) => {
       setClient(cRes.data);
       setSteps(sRes.data ?? []);
       setContracts(ctRes.data ?? []);
       setPayments(pRes.data ?? []);
-      
-      const staffOnly = (uRes.data ?? []).filter((u: any) => 
-        u.user_roles && u.user_roles.some((r: any) => r.role !== 'client')
-      );
-      setUsers(staffOnly);
+      setUsers(staffRes.data ?? []);
       setTemplates(tplRes.data ?? []);
       setSourceLead(leadRes.data ?? null);
       setDocuments(docRes.data ?? []);
@@ -1253,18 +1250,18 @@ export default function ClientDetail() {
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Aucun</SelectItem>
-                    {users.map(u => <SelectItem key={u.id} value={u.id}>{u.full_name || u.id}</SelectItem>)}
+                    {users.map(u => <SelectItem key={u.id} value={u.id}>{staffDisplayName(u)}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
             )}
-            {isAdmin && (
+            {canEdit && (
               <div className="sm:col-span-2 space-y-2"><Label>Référé par</Label>
                 <Select value={editForm.referred_by_user_id ?? 'none'} onValueChange={v => setEditForm({ ...editForm, referred_by_user_id: v === 'none' ? null : v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Choisir qui a référé" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Aucun</SelectItem>
-                    {users.map(u => <SelectItem key={u.id} value={u.id}>{u.full_name || u.id}</SelectItem>)}
+                    <SelectItem value="none">Aucun / Inconnu</SelectItem>
+                    {users.map(u => <SelectItem key={u.id} value={u.id}>{staffDisplayName(u)}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

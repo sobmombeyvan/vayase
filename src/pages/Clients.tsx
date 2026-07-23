@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Search, Eye, MapPin, Briefcase } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { cn } from '@/lib/utils';
+import { cn, staffDisplayName, isMissingClientsReferralColumnError } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/contexts/AuthContext';
@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { DESTINATION_COUNTRIES } from '@/lib/destinations';
+import { loadStaffMembers, type StaffMember } from '@/lib/staff';
 
 const statusStyles: Record<string, string> = {
   vip: 'bg-gradient-accent text-vayase-night border-0',
@@ -27,8 +28,9 @@ const statusStyles: Record<string, string> = {
 export default function Clients() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { hasAnyRole } = useAuth();
+  const { hasAnyRole, user } = useAuth();
   const canEditPriority = hasAnyRole(['super_admin', 'admin', 'agent', 'manager']);
+  const isStaff = hasAnyRole(['super_admin', 'admin', 'agent', 'manager', 'marketing_agent', 'comptable', 'support']);
   const [clients, setClients] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -36,7 +38,7 @@ export default function Clients() {
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [users, setUsers] = useState<any[]>([]);
+  const [users, setUsers] = useState<StaffMember[]>([]);
   const [createForm, setCreateForm] = useState({
     full_name: '',
     email: '',
@@ -50,26 +52,29 @@ export default function Clients() {
     referred_by_user_id: 'none',
   });
   const [templates, setTemplates] = useState<any[]>([]);
+  const [hasReferralColumn, setHasReferralColumn] = useState(true);
   const filteredTemplates = templates.filter((tpl) => {
     if (!createForm.destination_country) return true;
     return !tpl.destination_country || tpl.destination_country === createForm.destination_country;
   });
 
+  const loadStaff = async () => {
+    const { data, error } = await loadStaffMembers();
+    if (error) {
+      toast.error(error);
+      setUsers([]);
+      return;
+    }
+    setUsers(data);
+  };
+
   const loadClients = async () => {
     setLoading(true);
-    const [clientsRes, usersRes, tplRes] = await Promise.all([
+    const [clientsRes, tplRes] = await Promise.all([
       supabase.from('clients').select('*').order('created_at', { ascending: false }),
-      supabase.from('profiles').select('id, full_name, user_roles(role)').order('full_name'),
       supabase.from('procedure_templates').select('id, name, destination_country, visa_type, is_active').eq('is_active', true).order('name'),
     ]);
     const { data, error } = clientsRes;
-    if (!usersRes.error) {
-      // Only include users who have at least one role that is NOT 'client'
-      const staffOnly = (usersRes.data ?? []).filter((u: any) => 
-        u.user_roles && u.user_roles.some((r: any) => r.role !== 'client')
-      );
-      setUsers(staffOnly);
-    }
     if (!tplRes.error) setTemplates(tplRes.data ?? []);
     if (error) {
       toast.error(error.message);
@@ -82,6 +87,7 @@ export default function Clients() {
 
   useEffect(() => {
     loadClients();
+    loadStaff();
   }, []);
 
   const filtered = clients.filter(c => {
@@ -125,10 +131,27 @@ export default function Clients() {
     toast.success('Priorité client mise à jour');
   };
 
+  const openCreateDialog = async () => {
+    await loadStaff();
+    setCreateForm({
+      full_name: '',
+      email: '',
+      phone: '',
+      destination_country: '',
+      visa_type: '',
+      total_fees_due: '',
+      notes: '',
+      agent_id: 'none',
+      procedure_template_id: 'none',
+      referred_by_user_id: isStaff && user?.id ? user.id : 'none',
+    });
+    setCreateOpen(true);
+  };
+
   const handleCreateClient = async () => {
     if (!createForm.full_name.trim()) return toast.error('Le nom du client est requis');
     setCreating(true);
-    const payload = {
+    const payload: Record<string, unknown> = {
       full_name: createForm.full_name.trim(),
       email: createForm.email.trim() || null,
       phone: createForm.phone.trim() || null,
@@ -138,11 +161,20 @@ export default function Clients() {
       notes: createForm.notes.trim() || null,
       agent_id: createForm.agent_id === 'none' ? null : createForm.agent_id,
       procedure_template_id: createForm.procedure_template_id === 'none' ? null : createForm.procedure_template_id,
-      referred_by_user_id: createForm.referred_by_user_id === 'none' ? null : createForm.referred_by_user_id,
       status: 'standard' as any,
       urgency: 'normal' as any,
     };
-    const { data: createdClient, error } = await supabase.from('clients').insert(payload).select('id').single();
+    if (hasReferralColumn) {
+      payload.referred_by_user_id = createForm.referred_by_user_id === 'none' ? null : createForm.referred_by_user_id;
+    }
+
+    let { data: createdClient, error } = await supabase.from('clients').insert(payload).select('id').single();
+    if (error && isMissingClientsReferralColumnError(error.message) && hasReferralColumn) {
+      delete payload.referred_by_user_id;
+      setHasReferralColumn(false);
+      toast.warning('Migration referral manquante en base — le client est créé sans parrain.');
+      ({ data: createdClient, error } = await supabase.from('clients').insert(payload).select('id').single());
+    }
     setCreating(false);
     if (error) return toast.error(error.message);
 
@@ -195,7 +227,7 @@ export default function Clients() {
           <h1 className="font-display font-bold text-2xl lg:text-3xl text-foreground tracking-tight">{t('clients.title')}</h1>
           <p className="text-muted-foreground text-sm mt-1">{filtered.length} {t('clients.title').toLowerCase()}</p>
         </div>
-        <Button className="bg-gradient-accent text-vayase-night font-semibold hover:opacity-90 shadow-glow" onClick={() => setCreateOpen(true)}>
+        <Button className="bg-gradient-accent text-vayase-night font-semibold hover:opacity-90 shadow-glow" onClick={openCreateDialog}>
           <Plus className="w-4 h-4 mr-2" />{t('clients.new')}
         </Button>
       </div>
@@ -420,6 +452,23 @@ export default function Clients() {
               />
             </div>
             <div className="space-y-2">
+              <Label>Référé par</Label>
+              <p className="text-xs text-muted-foreground">Membre de l'équipe qui a amené ce client</p>
+              <Select value={createForm.referred_by_user_id} onValueChange={v => setCreateForm({ ...createForm, referred_by_user_id: v })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choisir qui a référé" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Aucun / Inconnu</SelectItem>
+                  {users.length === 0 ? (
+                    <SelectItem value="__empty" disabled>Aucun employé trouvé</SelectItem>
+                  ) : users.map(u => (
+                    <SelectItem key={u.id} value={u.id}>{staffDisplayName(u)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
               <Label>Responsable du client</Label>
               <Select value={createForm.agent_id} onValueChange={v => setCreateForm({ ...createForm, agent_id: v })}>
                 <SelectTrigger>
@@ -427,19 +476,7 @@ export default function Clients() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Aucun</SelectItem>
-                  {users.map(u => <SelectItem key={u.id} value={u.id}>{u.full_name || u.id}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Référé par</Label>
-              <Select value={createForm.referred_by_user_id} onValueChange={v => setCreateForm({ ...createForm, referred_by_user_id: v })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choisir un utilisateur" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Aucun</SelectItem>
-                  {users.map(u => <SelectItem key={u.id} value={u.id}>{u.full_name || u.id}</SelectItem>)}
+                  {users.map(u => <SelectItem key={u.id} value={u.id}>{staffDisplayName(u)}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
