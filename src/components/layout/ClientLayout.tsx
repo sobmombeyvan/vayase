@@ -1,69 +1,206 @@
-import { Outlet, Navigate, useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Outlet, Navigate, useNavigate, NavLink, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
-import { Button } from '@/components/ui/button';
 import { BrandLogo } from '@/components/branding/BrandLogo';
-import { LogOut, User } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, LogOut } from 'lucide-react';
+import { NotificationCenter } from '@/components/notifications/NotificationCenter';
+import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
+import { playMessageAlert } from '@/lib/notification-sound';
+import { toast } from 'sonner';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+
+const navItems = [
+  { to: '/client/dashboard', icon: LayoutDashboard, label: 'Dossier' },
+  { to: '/client/messages', icon: MessageSquare, label: 'Messages' },
+];
 
 export function ClientLayout() {
   const { user, hasRole, signOut, loading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isMessages = location.pathname.startsWith('/client/messages');
+
+  const { data: unreadMessages = 0 } = useQuery({
+    queryKey: ['client-unread-messages', user?.id],
+    queryFn: async () => {
+      const { data: client } = await supabase
+        .from('clients')
+        .select('id')
+        .eq('auth_user_id', user!.id)
+        .single();
+      if (!client) return 0;
+      const { count, error } = await supabase
+        .from('chat_messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('client_id', client.id)
+        .neq('sender_id', user!.id)
+        .is('read_at', null);
+      if (error) return 0;
+      return count || 0;
+    },
+    enabled: !!user?.id,
+    refetchInterval: 20000,
+  });
+
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel(`client-chat-alerts-${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'chat_messages' },
+        async (payload) => {
+          const msg = payload.new as { sender_id: string; body: string; client_id: string };
+          if (msg.sender_id === user.id) return;
+          const { data: client } = await supabase
+            .from('clients')
+            .select('id')
+            .eq('auth_user_id', user.id)
+            .single();
+          if (!client || client.id !== msg.client_id) return;
+          playMessageAlert();
+          toast('Message de votre conseiller', {
+            description: msg.body.slice(0, 80),
+            duration: 8000,
+          });
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user]);
 
   if (loading) {
-    return <div className="min-h-screen bg-gray-50 flex items-center justify-center">Chargement...</div>;
+    return (
+      <div className="client-app h-[100dvh] flex items-center justify-center bg-[#111b21]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 rounded-full border-2 border-vayase-accent border-t-transparent animate-spin" />
+          <p className="text-sm text-[#8696a0]">Chargement...</p>
+        </div>
+      </div>
+    );
   }
 
-  if (!user) {
-    return <Navigate to="/client/login" replace />;
-  }
-
-  if (!hasRole('client')) {
-    // If not a client, they might be an admin, redirect them to admin dashboard
-    return <Navigate to="/" replace />;
-  }
+  if (!user) return <Navigate to="/client/login" replace />;
+  if (!hasRole('client')) return <Navigate to="/" replace />;
 
   const handleSignOut = async () => {
     await signOut();
     navigate('/client/login');
   };
 
+  const initials = user.email?.[0]?.toUpperCase() || 'C';
+
   return (
-    <div className="min-h-screen bg-background flex flex-col font-sans selection:bg-vayase-accent/30">
-      <header className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur-md transition-all">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <BrandLogo size="sm" />
-          
-          <div className="flex items-center gap-3 md:gap-6">
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/50 border border-border">
-              <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
-              <span className="text-xs font-medium text-muted-foreground truncate max-w-[150px]">
-                {user.email}
-              </span>
+    <div className={cn(
+      'client-app h-[100dvh] flex flex-col overflow-hidden',
+      isMessages ? 'bg-secondary/30' : 'bg-background'
+    )}>
+      {/* Hide chrome on mobile messages — full-screen WhatsApp chat */}
+      <header className={cn(
+        'shrink-0 z-50 border-b bg-card/95 backdrop-blur-lg safe-top',
+        isMessages && 'hidden lg:block'
+      )}>
+          <div className="flex items-center justify-between px-4 h-14 max-w-lg mx-auto lg:max-w-7xl">
+            <BrandLogo size="sm" showText={false} className="lg:hidden" />
+            <BrandLogo size="sm" className="hidden lg:flex" />
+            <div className="flex items-center gap-1">
+              <NotificationCenter />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="flex items-center p-1 rounded-full hover:bg-secondary transition-colors">
+                    <Avatar className="h-8 w-8 ring-2 ring-vayase-accent/20">
+                      <AvatarFallback className="bg-vayase-accent/15 text-vayase-accent text-xs font-bold">
+                        {initials}
+                      </AvatarFallback>
+                    </Avatar>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <div className="px-3 py-2 border-b">
+                    <p className="text-xs text-muted-foreground">Connecté en tant que</p>
+                    <p className="text-sm font-medium truncate">{user.email}</p>
+                  </div>
+                  <DropdownMenuItem onClick={handleSignOut} className="text-destructive focus:text-destructive">
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Déconnexion
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
-            
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={handleSignOut} 
-              className="text-muted-foreground hover:text-foreground transition-colors group"
-            >
-              <LogOut className="w-4 h-4 mr-2 group-hover:translate-x-0.5 transition-transform" />
-              <span className="hidden xs:inline">Déconnexion</span>
-            </Button>
           </div>
-        </div>
-      </header>
-      
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-6 sm:px-6 sm:py-10">
-        <Outlet />
+          <nav className="hidden lg:block border-t bg-background/60">
+            <div className="max-w-7xl mx-auto px-6 flex gap-1">
+              {navItems.map((item) => {
+                const active = location.pathname === item.to;
+                return (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    className={cn(
+                      'flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors',
+                      active ? 'border-vayase-accent text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    <item.icon className="w-4 h-4" />
+                    {item.label}
+                  </NavLink>
+                );
+              })}
+            </div>
+          </nav>
+        </header>
+
+      <main
+        className={cn(
+          'flex-1 min-h-0 w-full',
+          isMessages
+            ? 'flex flex-col overflow-hidden max-w-none'
+            : 'overflow-y-auto overscroll-contain px-4 pt-4 client-main-pad pb-4 max-w-lg mx-auto lg:max-w-7xl lg:px-6 lg:py-8'
+        )}
+      >
+        <Outlet context={{ unreadMessages }} />
       </main>
-      
-      <footer className="border-t py-6 bg-white/50 backdrop-blur-sm">
-        <div className="max-w-7xl mx-auto px-4 text-center">
-          <p className="text-xs text-muted-foreground">
-            &copy; {new Date().getFullYear()} Vayase Consulting. Tous droits réservés.
-          </p>
-        </div>
-      </footer>
+
+      {!isMessages && (
+        <nav className="lg:hidden shrink-0 z-50 border-t bg-card/95 backdrop-blur-xl safe-bottom client-bottom-nav">
+          <div className="flex items-stretch max-w-lg mx-auto">
+            {navItems.map((item) => {
+              const active = location.pathname === item.to;
+              const isMsg = item.to.includes('messages');
+              return (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={cn(
+                    'relative flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] touch-manipulation',
+                    active ? 'text-vayase-accent' : 'text-muted-foreground'
+                  )}
+                >
+                  <div className="relative">
+                    <item.icon className={cn('w-5 h-5', active && 'stroke-[2.5]')} />
+                    {isMsg && unreadMessages > 0 && (
+                      <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-vayase-accent text-vayase-night text-[9px] font-bold flex items-center justify-center">
+                        {unreadMessages > 9 ? '9+' : unreadMessages}
+                      </span>
+                    )}
+                  </div>
+                  <span className={cn('text-[10px] font-medium', active && 'font-semibold')}>
+                    {item.label}
+                  </span>
+                </NavLink>
+              );
+            })}
+          </div>
+        </nav>
+      )}
     </div>
   );
 }

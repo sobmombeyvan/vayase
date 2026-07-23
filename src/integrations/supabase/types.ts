@@ -305,6 +305,53 @@ export type Database = {
           },
         ]
       }
+      chat_messages: {
+        Row: {
+          attachment_mime: string | null
+          attachment_name: string | null
+          attachment_path: string | null
+          attachment_size: number | null
+          body: string
+          client_id: string
+          created_at: string
+          id: string
+          read_at: string | null
+          sender_id: string
+        }
+        Insert: {
+          attachment_mime?: string | null
+          attachment_name?: string | null
+          attachment_path?: string | null
+          attachment_size?: number | null
+          body: string
+          client_id: string
+          created_at?: string
+          id?: string
+          read_at?: string | null
+          sender_id: string
+        }
+        Update: {
+          attachment_mime?: string | null
+          attachment_name?: string | null
+          attachment_path?: string | null
+          attachment_size?: number | null
+          body?: string
+          client_id?: string
+          created_at?: string
+          id?: string
+          read_at?: string | null
+          sender_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_messages_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clients: {
         Row: {
           address: string | null
@@ -771,6 +818,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_access_client: { Args: { _client_id: string }; Returns: boolean }
       can_manage_clients: { Args: { _user_id: string }; Returns: boolean }
       can_manage_finance: { Args: { _user_id: string }; Returns: boolean }
       get_user_roles: {

@@ -2,7 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   LayoutDashboard, Users, UserPlus, ListChecks, Wallet,
-  Calendar, FileText, BarChart3, ChevronLeft, ChevronRight, Shield, BookOpen, CheckSquare, DatabaseBackup,
+  Calendar, FileText, BarChart3, ChevronLeft, ChevronRight, Shield, BookOpen, CheckSquare, DatabaseBackup, MessageSquare,
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -21,6 +21,7 @@ export function AppSidebar({ onNavigate, isMobile }: { onNavigate?: () => void, 
     { to: '/', icon: LayoutDashboard, label: t('nav.dashboard'), exact: true },
     { to: '/leads', icon: UserPlus, label: t('nav.leads') },
     { to: '/clients', icon: Users, label: t('nav.clients') },
+    { to: '/messages', icon: MessageSquare, label: t('nav.messages') },
     { to: '/procedures', icon: ListChecks, label: t('nav.procedures') },
     { to: '/tasks', icon: CheckSquare, label: t('nav.tasks') },
     ...(canFinance ? [{ to: '/finance', icon: Wallet, label: t('nav.finance') }] : []),

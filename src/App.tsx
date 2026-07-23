@@ -10,6 +10,8 @@ import { ClientLayout } from "@/components/layout/ClientLayout";
 import Auth from "./pages/Auth";
 import ClientLogin from "./pages/client/ClientLogin";
 import ClientDashboard from "./pages/client/ClientDashboard";
+import ClientMessages from "./pages/client/ClientMessages";
+import Messages from "./pages/Messages";
 import Dashboard from "./pages/Dashboard";
 import Clients from "./pages/Clients";
 import ClientDetail from "./pages/ClientDetail";
@@ -41,6 +43,7 @@ const App = () => (
               <Route path="/leads" element={<Leads />} />
               <Route path="/clients" element={<Clients />} />
               <Route path="/clients/:id" element={<ClientDetail />} />
+              <Route path="/messages" element={<Messages />} />
               <Route path="/procedures" element={<Procedures />} />
               <Route path="/finance" element={<Finance />} />
               <Route path="/calendar" element={<Calendar />} />
@@ -56,6 +59,7 @@ const App = () => (
             <Route path="/client/login" element={<ClientLogin />} />
             <Route element={<ClientLayout />}>
               <Route path="/client/dashboard" element={<ClientDashboard />} />
+              <Route path="/client/messages" element={<ClientMessages />} />
             </Route>
 
             <Route path="*" element={<NotFound />} />

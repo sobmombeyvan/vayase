@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
-import { Search, Globe, Moon, Sun, LogOut, User as UserIcon, Menu } from 'lucide-react';
+import { Search, Globe, Moon, Sun, LogOut, User as UserIcon, Menu, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -11,6 +11,7 @@ import { NotificationCenter } from '@/components/notifications/NotificationCente
 import { BrandLogo } from '@/components/branding/BrandLogo';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { AppSidebar } from './AppSidebar';
+import { useAdminChat } from '@/contexts/AdminChatContext';
 
 export function AppTopbar() {
   const { t, i18n } = useTranslation();
@@ -35,7 +36,9 @@ export function AppTopbar() {
 
   const toggleLang = () => i18n.changeLanguage(i18n.language === 'fr' ? 'en' : 'fr');
 
+  const { openChat, unreadTotal } = useAdminChat();
   const initials = (user?.email ?? 'U')[0].toUpperCase();
+
   const primaryRole = roles[0];
 
   return (
@@ -75,6 +78,21 @@ export function AppTopbar() {
 
         <Button variant="ghost" size="icon" onClick={toggleTheme} className="text-muted-foreground hover:text-foreground">
           {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => openChat()}
+          className="relative text-muted-foreground hover:text-vayase-accent"
+          title={t('nav.messages')}
+        >
+          <MessageSquare className="w-4 h-4" />
+          {unreadTotal > 0 && (
+            <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-vayase-accent text-vayase-night text-[9px] font-bold flex items-center justify-center">
+              {unreadTotal > 9 ? '9+' : unreadTotal}
+            </span>
+          )}
         </Button>
 
         <NotificationCenter />

@@ -1,0 +1,26 @@
+{
+  "name": "VAYASE — Mon Dossier",
+  "short_name": "VAYASE",
+  "description": "Suivez votre dossier d'immigration VAYASE",
+  "start_url": "/client/dashboard",
+  "scope": "/client/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#081025",
+  "theme_color": "#081025",
+  "lang": "fr",
+  "icons": [
+    {
+      "src": "/vayase-logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/vayase-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

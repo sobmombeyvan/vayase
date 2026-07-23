@@ -210,3 +210,44 @@
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+
+/* Client mobile app shell */
+.client-app {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.client-bottom-nav {
+  box-shadow: 0 -4px 24px hsl(224 65% 9% / 0.08);
+}
+
+.client-main-pad {
+  padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 1024px) {
+  .client-main-pad {
+    padding-bottom: 2rem;
+  }
+}
+
+.wa-chat-bg,
+.vayase-chat-bg {
+  background-color: hsl(var(--secondary) / 0.5);
+  background-image: radial-gradient(hsl(var(--vayase-accent) / 0.08) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.dark .wa-chat-bg,
+.dark .vayase-chat-bg {
+  background-color: hsl(var(--background));
+  background-image: radial-gradient(hsl(var(--vayase-accent) / 0.06) 1px, transparent 1px);
+}
