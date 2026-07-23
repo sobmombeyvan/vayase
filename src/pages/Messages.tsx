@@ -2,21 +2,17 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { formatDistanceToNow } from 'date-fns';
-import { fr, enUS } from 'date-fns/locale';
-import { MessageSquare, Search, Users } from 'lucide-react';
+import { MessageSquare, ChevronLeft, Sparkles } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { ChatThread } from '@/components/chat/ChatThread';
+import { ChatInboxList } from '@/components/chat/ChatInboxList';
 import { ChatMessage } from '@/hooks/useChatMessages';
 import { toast } from 'sonner';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface ClientRow {
   id: string;
@@ -32,24 +28,26 @@ interface LastMessage {
   sender_id: string;
 }
 
-function getInitials(name: string) {
-  return name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
-}
-
 export default function Messages() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { user, hasAnyRole } = useAuth();
   const canDeleteMessages = hasAnyRole(['super_admin', 'admin']);
-  const locale = i18n.language === 'fr' ? fr : enUS;
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState('');
+  const isMobile = useIsMobile();
   const selectedId = searchParams.get('client');
+  const [mobileShowChat, setMobileShowChat] = useState(false);
 
   const refreshInbox = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['chat-last-messages'] });
     queryClient.invalidateQueries({ queryKey: ['chat-unread-counts'] });
   }, [queryClient]);
+
+  const selectClient = useCallback((id: string) => {
+    setSearchParams({ client: id });
+    if (isMobile) setMobileShowChat(true);
+  }, [setSearchParams, isMobile]);
 
   const { data: clients = [], isLoading } = useQuery({
     queryKey: ['chat-clients'],
@@ -120,10 +118,7 @@ export default function Messages() {
             toast.info(client?.full_name || 'Client', {
               description: msg.body.slice(0, 80),
               action: client
-                ? {
-                    label: 'Voir',
-                    onClick: () => setSearchParams({ client: client.id }),
-                  }
+                ? { label: 'Voir', onClick: () => selectClient(client.id) }
                 : undefined,
             });
           }
@@ -136,7 +131,7 @@ export default function Messages() {
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [user, clients, refreshInbox, setSearchParams]);
+  }, [user, clients, refreshInbox, selectClient]);
 
   const lastMessageMap = useMemo(() => {
     const map: Record<string, LastMessage> = {};
@@ -144,150 +139,129 @@ export default function Messages() {
     return map;
   }, [lastMessages]);
 
-  const filteredClients = useMemo(() => {
-    const q = search.toLowerCase();
-    const list = clients.filter(
-      (c) =>
-        c.full_name.toLowerCase().includes(q) ||
-        c.email?.toLowerCase().includes(q)
-    );
-    return list.sort((a, b) => {
+  const sortedClients = useMemo(() => {
+    return [...clients].sort((a, b) => {
       const aUnread = unreadByClient[a.id] || 0;
       const bUnread = unreadByClient[b.id] || 0;
       if (aUnread !== bUnread) return bUnread - aUnread;
-      const aTime = lastMessageMap[a.id]?.created_at || '';
-      const bTime = lastMessageMap[b.id]?.created_at || '';
-      return bTime.localeCompare(aTime);
+      return (lastMessageMap[b.id]?.created_at || '').localeCompare(lastMessageMap[a.id]?.created_at || '');
     });
-  }, [clients, search, lastMessageMap, unreadByClient]);
+  }, [clients, lastMessageMap, unreadByClient]);
 
   const selectedClient = clients.find((c) => c.id === selectedId);
   const totalUnread = Object.values(unreadByClient).reduce((a, b) => a + b, 0);
 
   useEffect(() => {
-    if (!selectedId && filteredClients.length > 0) {
-      setSearchParams({ client: filteredClients[0].id }, { replace: true });
+    if (isMobile) {
+      setMobileShowChat(!!selectedId);
     }
-  }, [filteredClients, selectedId, setSearchParams]);
+  }, [selectedId, isMobile]);
+
+  useEffect(() => {
+    if (!selectedId && sortedClients.length > 0 && !isMobile) {
+      setSearchParams({ client: sortedClients[0].id }, { replace: true });
+    }
+  }, [sortedClients, selectedId, setSearchParams, isMobile]);
 
   const handleIncoming = useCallback(() => {
     refreshInbox();
   }, [refreshInbox]);
 
+  const goBackToList = () => {
+    setMobileShowChat(false);
+    setSearchParams({}, { replace: true });
+  };
+
+  const showList = !isMobile || !mobileShowChat;
+  const showChat = !isMobile || mobileShowChat;
+
   return (
-    <div className="space-y-4 animate-fade-in h-[calc(100vh-120px)] flex flex-col">
-      <div className="flex items-center justify-between shrink-0">
-        <div>
-          <h1 className="text-2xl font-display font-bold flex items-center gap-2">
-            {t('chat.title')}
-            {totalUnread > 0 && (
-              <Badge className="bg-vayase-accent text-vayase-night">{totalUnread}</Badge>
-            )}
-          </h1>
-          <p className="text-sm text-muted-foreground">{t('chat.subtitle')}</p>
-        </div>
-      </div>
-
-      <Card className="overflow-hidden border shadow-md flex-1 min-h-0">
-        <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] h-full">
-          <div className="border-r flex flex-col bg-secondary/10 min-h-0">
-            <div className="p-3 border-b bg-card/50">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={t('chat.searchClients')}
-                  className="pl-9 h-10 rounded-xl bg-background"
-                />
-              </div>
-            </div>
-            <ScrollArea className="flex-1">
-              {isLoading ? (
-                <div className="p-3 space-y-3">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div key={i} className="flex gap-3 p-2">
-                      <Skeleton className="h-10 w-10 rounded-full" />
-                      <div className="flex-1 space-y-2">
-                        <Skeleton className="h-3 w-24" />
-                        <Skeleton className="h-2 w-full" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : filteredClients.length === 0 ? (
-                <div className="p-8 text-center text-muted-foreground">
-                  <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                  <p className="text-sm">{t('chat.noClients')}</p>
-                </div>
-              ) : (
-                <div>
-                  {filteredClients.map((client) => {
-                    const last = lastMessageMap[client.id];
-                    const unread = unreadByClient[client.id] || 0;
-                    const active = client.id === selectedId;
-                    const lastFromClient = last && client.auth_user_id && last.sender_id === client.auth_user_id;
-
-                    return (
-                      <button
-                        key={client.id}
-                        type="button"
-                        onClick={() => setSearchParams({ client: client.id })}
-                        className={cn(
-                          'w-full text-left px-4 py-3.5 transition-all border-b border-border/40',
-                          'hover:bg-secondary/50',
-                          active && 'bg-secondary/70 border-l-2 border-l-vayase-accent',
-                          unread > 0 && !active && 'bg-vayase-accent/5'
-                        )}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="relative shrink-0">
-                            <Avatar className="h-11 w-11">
-                              <AvatarFallback className="bg-vayase-accent/15 text-vayase-accent font-semibold text-xs">
-                                {getInitials(client.full_name)}
-                              </AvatarFallback>
-                            </Avatar>
-                            {unread > 0 && (
-                              <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-vayase-accent text-vayase-night text-[10px] font-bold flex items-center justify-center ring-2 ring-background">
-                                {unread > 9 ? '9+' : unread}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className={cn('font-medium text-sm truncate', unread > 0 && 'font-semibold')}>
-                                {client.full_name}
-                              </span>
-                              {last && (
-                                <span className="text-[10px] text-muted-foreground shrink-0">
-                                  {formatDistanceToNow(new Date(last.created_at), { addSuffix: false, locale })}
-                                </span>
-                              )}
-                            </div>
-                            {last ? (
-                              <p className={cn(
-                                'text-xs truncate mt-0.5',
-                                unread > 0 ? 'text-foreground font-medium' : 'text-muted-foreground',
-                                lastFromClient && unread > 0 && 'text-vayase-accent'
-                              )}>
-                                {lastFromClient ? '● ' : ''}{last.body}
-                              </p>
-                            ) : (
-                              <p className="text-xs text-muted-foreground/50 italic mt-0.5">
-                                {t('chat.noMessages')}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
+    <div className={cn(
+      'flex flex-col min-h-0',
+      isMobile ? 'h-[calc(100dvh-4rem)]' : 'h-[calc(100dvh-8rem)] lg:h-[calc(100dvh-9rem)]'
+    )}>
+      {/* Desktop / mobile list header */}
+      {showList && (
+        <div className={cn(
+          'shrink-0 flex items-center justify-between gap-3',
+          isMobile ? 'px-4 py-3 bg-vayase-night text-white' : 'mb-4'
+        )}>
+          <div>
+            <h1 className={cn(
+              'font-display font-bold flex items-center gap-2',
+              isMobile ? 'text-lg' : 'text-2xl lg:text-3xl'
+            )}>
+              {!isMobile && (
+                <span className="w-9 h-9 rounded-xl bg-vayase-accent/15 flex items-center justify-center">
+                  <MessageSquare className="w-5 h-5 text-vayase-accent" />
+                </span>
               )}
-            </ScrollArea>
+              {isMobile && <MessageSquare className="w-5 h-5 text-vayase-accent" />}
+              {t('chat.title')}
+              {totalUnread > 0 && (
+                <Badge className={cn(
+                  'text-xs px-2',
+                  isMobile ? 'bg-vayase-accent text-vayase-night' : 'bg-vayase-accent text-vayase-night'
+                )}>
+                  {totalUnread}
+                </Badge>
+              )}
+            </h1>
+            {!isMobile && (
+              <p className="text-sm text-muted-foreground mt-1 ml-11">{t('chat.subtitle')}</p>
+            )}
           </div>
+          {!isMobile && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground bg-secondary/60 px-3 py-2 rounded-full">
+              <Sparkles className="w-3.5 h-3.5 text-vayase-accent" />
+              {sortedClients.length} clients
+            </div>
+          )}
+        </div>
+      )}
 
-          <div className="flex flex-col min-h-[400px] lg:min-h-0 bg-background">
+      <div className={cn(
+        'flex-1 min-h-0 flex overflow-hidden bg-background',
+        !isMobile && 'rounded-2xl border border-border/60 shadow-xl'
+      )}>
+        {showList && (
+          <div className={cn(
+            'flex flex-col min-h-0',
+            isMobile ? 'w-full h-full' : 'w-[min(100%,340px)] shrink-0 border-r border-border/40'
+          )}>
+            <ChatInboxList
+              clients={sortedClients}
+              selectedId={selectedId}
+              onSelect={selectClient}
+              lastMessageMap={lastMessageMap}
+              unreadByClient={unreadByClient}
+              search={search}
+              onSearchChange={setSearch}
+              isLoading={isLoading}
+              dark
+            />
+          </div>
+        )}
+
+        {showChat && (
+          <div className="flex-1 min-w-0 flex flex-col min-h-0 h-full">
+            {isMobile && selectedClient && (
+              <div className="shrink-0 flex items-center gap-2 px-2 py-2.5 bg-vayase-night text-white safe-top">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-10 w-10 text-white hover:bg-white/10 shrink-0"
+                  onClick={goBackToList}
+                >
+                  <ChevronLeft className="w-6 h-6" />
+                </Button>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm truncate">{selectedClient.full_name}</p>
+                  <p className="text-[11px] text-white/50 truncate">{selectedClient.email || t('chat.liveChat')}</p>
+                </div>
+              </div>
+            )}
+
             {selectedClient ? (
               <ChatThread
                 key={selectedClient.id}
@@ -297,21 +271,22 @@ export default function Messages() {
                 showSenderLabels
                 allowDelete={canDeleteMessages}
                 onIncomingMessage={handleIncoming}
+                adminMode
               />
-            ) : (
-              <div className="flex-1 flex items-center justify-center text-muted-foreground bg-secondary/5">
-                <div className="text-center p-8">
-                  <div className="w-20 h-20 rounded-full bg-vayase-accent/10 flex items-center justify-center mx-auto mb-4">
-                    <MessageSquare className="w-10 h-10 text-vayase-accent/50" />
+            ) : !isMobile ? (
+              <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-secondary/20 to-background">
+                <div className="text-center p-8 max-w-sm">
+                  <div className="w-20 h-20 rounded-2xl bg-vayase-accent/10 flex items-center justify-center mx-auto mb-4 ring-1 ring-vayase-accent/20">
+                    <MessageSquare className="w-10 h-10 text-vayase-accent" />
                   </div>
-                  <p className="text-sm font-medium text-foreground">{t('chat.selectClient')}</p>
-                  <p className="text-xs mt-1">{t('chat.subtitle')}</p>
+                  <p className="font-display font-semibold text-foreground">{t('chat.selectClient')}</p>
+                  <p className="text-sm text-muted-foreground mt-2">{t('chat.subtitle')}</p>
                 </div>
               </div>
-            )}
+            ) : null}
           </div>
-        </div>
-      </Card>
+        )}
+      </div>
     </div>
   );
 }

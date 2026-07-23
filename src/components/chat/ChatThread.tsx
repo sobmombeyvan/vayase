@@ -20,6 +20,7 @@ import { useChatMessages, ChatMessage, downloadMessageAttachment, isFileMessage,
 import { ChatAttachment } from '@/components/chat/ChatAttachment';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface ChatThreadProps {
   clientId: string;
@@ -30,6 +31,7 @@ interface ChatThreadProps {
   allowDelete?: boolean;
   onIncomingMessage?: (message: ChatMessage) => void;
   clientMode?: boolean;
+  adminMode?: boolean;
 }
 
 function formatMessageTime(date: Date, locale: typeof fr) {
@@ -81,10 +83,12 @@ export function ChatThread({
   allowDelete = false,
   onIncomingMessage,
   clientMode = false,
+  adminMode = false,
 }: ChatThreadProps) {
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const locale = i18n.language === 'fr' ? fr : enUS;
   const { messages, loading, sending, sendMessage, sendFile, deleteMessage } = useChatMessages(
     clientId,
@@ -98,6 +102,7 @@ export function ChatThread({
 
   const headerTitle = clientMode ? t('chat.advisor') : clientName;
   const headerSubtitle = clientMode ? t('chat.clientSubtitle') : t('chat.liveChat');
+  const showHeader = clientMode || (!!(clientName || clientMode) && !(adminMode && isMobile));
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -136,7 +141,7 @@ export function ChatThread({
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-secondary/40">
-      {(headerTitle || clientMode) && (
+      {(showHeader) && (
         <div className="px-3 py-3 bg-vayase-night text-white flex items-center gap-2 shrink-0 shadow-md safe-top">
           {clientMode && (
             <button
