@@ -1,3 +1,8 @@
+# ============================================================
+# ATTENTION: CE FICHIER EST UN SCRIPT POWERSHELL
+# NE PAS COLLER DANS SUPABASE SQL EDITOR
+# Pour SQL, utilisez: supabase/push_setup_ready.sql
+# ============================================================
 # VAYASE - Deploy send-web-push and configure secrets
 # Usage: powershell -ExecutionPolicy Bypass -File supabase\deploy-push.ps1
 

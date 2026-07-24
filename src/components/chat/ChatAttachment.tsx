@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Download, FileText, ImageIcon, Loader2 } from 'lucide-react';
+import { FileText, ImageIcon, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   getChatAttachmentUrl,
   formatFileSize,
   isImageMime,
+  isVoiceMessage,
   getFileDisplayName,
   type ChatMessage,
 } from '@/hooks/useChatMessages';
+import { ChatVoicePlayer } from '@/components/chat/ChatVoicePlayer';
 
 interface ChatAttachmentProps {
   message: ChatMessage;
@@ -19,11 +21,12 @@ export function ChatAttachment({ message, isOwn }: ChatAttachmentProps) {
   const [previewLoading, setPreviewLoading] = useState(false);
 
   const fileName = getFileDisplayName(message);
+  const isVoice = isVoiceMessage(message);
   const isImage = isImageMime(message.attachment_mime);
   const hasPath = !!message.attachment_path;
 
   useEffect(() => {
-    if (!isImage || !hasPath) return;
+    if (!isImage || !hasPath || isVoice) return;
     let cancelled = false;
     setPreviewLoading(true);
     getChatAttachmentUrl(message.attachment_path!, fileName).then((signed) => {
@@ -33,7 +36,11 @@ export function ChatAttachment({ message, isOwn }: ChatAttachmentProps) {
       }
     });
     return () => { cancelled = true; };
-  }, [message.attachment_path, fileName, isImage, hasPath]);
+  }, [message.attachment_path, fileName, isImage, hasPath, isVoice]);
+
+  if (isVoice) {
+    return <ChatVoicePlayer message={message} isOwn={isOwn} />;
+  }
 
   return (
     <div

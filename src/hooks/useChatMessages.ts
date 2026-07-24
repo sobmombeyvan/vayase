@@ -20,6 +20,7 @@ export interface ChatMessage {
 const CHAT_BUCKET = 'chat-attachments';
 const PRIMARY_BUCKET = 'client-documents';
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+export const VOICE_MESSAGE_BODY = '🎤 Message vocal';
 
 function sanitizeFileName(name: string) {
   return name.replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -379,8 +380,14 @@ export function useChatMessages(
     }
 
     setSending(false);
-    if (msg) notifyRecipient(`📎 ${file.name}`);
+    if (msg) notifyRecipient(body.startsWith('🎤') ? VOICE_MESSAGE_BODY : `📎 ${file.name}`);
     return !!msg;
+  };
+
+  const sendVoice = async (blob: Blob, mimeType: string) => {
+    const ext = mimeType.includes('mp4') ? 'm4a' : mimeType.includes('ogg') ? 'ogg' : 'webm';
+    const file = new File([blob], `voice_${Date.now()}.${ext}`, { type: mimeType });
+    return sendFile(file, VOICE_MESSAGE_BODY);
   };
 
   const deleteMessage = async (messageId: string) => {
@@ -412,6 +419,7 @@ export function useChatMessages(
     sending,
     sendMessage,
     sendFile,
+    sendVoice,
     deleteMessage,
     unreadCount,
     reload: load,
@@ -554,6 +562,14 @@ export function formatFileSize(bytes: number | null | undefined) {
 
 export function isImageMime(mime: string | null | undefined) {
   return !!mime?.startsWith('image/');
+}
+
+export function isAudioMime(mime: string | null | undefined) {
+  return !!mime?.startsWith('audio/');
+}
+
+export function isVoiceMessage(msg: ChatMessage) {
+  return isAudioMime(msg.attachment_mime) || msg.body?.startsWith('🎤');
 }
 
 export function isFileMessage(msg: ChatMessage) {

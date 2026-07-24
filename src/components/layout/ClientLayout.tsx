@@ -61,7 +61,8 @@ export function ClientLayout() {
       return count || 0;
     },
     enabled: !!user?.id && !!clientInfo,
-    refetchInterval: 15000,
+    refetchInterval: (query) =>
+      typeof document !== 'undefined' && document.visibilityState === 'hidden' ? 10000 : 15000,
   });
 
   useEffect(() => {

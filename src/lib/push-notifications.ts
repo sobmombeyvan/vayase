@@ -1,8 +1,16 @@
 import { supabase } from '@/integrations/supabase/client';
 
-const SW_PATH = '/sw.js';
 const ICON = '/vayase-icon.svg';
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined;
+
+function getServiceWorkerConfig() {
+  const onClient =
+    typeof window !== 'undefined' && window.location.pathname.startsWith('/client');
+  return {
+    path: onClient ? '/client/sw.js' : '/sw.js',
+    scope: onClient ? '/client/' : '/',
+  };
+}
 
 export function isIosDevice() {
   return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -31,8 +39,9 @@ function urlBase64ToUint8Array(base64String: string) {
 
 export async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return null;
+  const { path, scope } = getServiceWorkerConfig();
   try {
-    const reg = await navigator.serviceWorker.register(SW_PATH, { scope: '/' });
+    const reg = await navigator.serviceWorker.register(path, { scope });
     await navigator.serviceWorker.ready;
 
     if ('periodicSync' in reg) {
@@ -44,19 +53,35 @@ export async function registerServiceWorker() {
       }
     }
 
-    if ('sync' in reg) {
-      try {
-        await (reg as ServiceWorkerRegistration & { sync: { register: (tag: string) => Promise<void> } })
-          .sync.register('check-messages');
-      } catch {
-        /* optional */
-      }
-    }
+    await registerBackgroundSync(reg);
 
     return reg;
   } catch (err) {
     console.warn('SW registration failed:', err);
     return null;
+  }
+}
+
+/** Ask the service worker to check messages when iOS suspends the page */
+export async function registerBackgroundSync(reg?: ServiceWorkerRegistration) {
+  try {
+    const registration = reg ?? (await navigator.serviceWorker.ready);
+    if ('sync' in registration) {
+      await (registration as ServiceWorkerRegistration & { sync: { register: (tag: string) => Promise<void> } })
+        .sync.register('check-messages');
+    }
+  } catch {
+    /* optional on iOS */
+  }
+}
+
+export async function reconnectRealtime() {
+  try {
+    const rt = supabase.realtime as { disconnect?: () => void; connect?: () => void };
+    rt.disconnect?.();
+    rt.connect?.();
+  } catch {
+    /* optional */
   }
 }
 

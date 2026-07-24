@@ -5,7 +5,7 @@ import { format, isToday, isYesterday, isSameDay } from 'date-fns';
 import { fr, enUS } from 'date-fns/locale';
 import {
   Loader2, Send, Paperclip, Check, CheckCheck,
-  ChevronLeft, MoreVertical, Trash2, Shield, Download,
+  ChevronLeft, MoreVertical, Trash2, Shield, Download, Mic, X, Square,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -16,11 +16,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
-import { useChatMessages, ChatMessage, downloadMessageAttachment, isFileMessage, getFileDisplayName } from '@/hooks/useChatMessages';
+import { useChatMessages, ChatMessage, downloadMessageAttachment, isFileMessage, isVoiceMessage, getFileDisplayName } from '@/hooks/useChatMessages';
 import { ChatAttachment } from '@/components/chat/ChatAttachment';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useVoiceRecorder, formatVoiceDuration } from '@/hooks/useVoiceRecorder';
 
 interface ChatThreadProps {
   clientId: string;
@@ -90,7 +91,7 @@ export function ChatThread({
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const locale = i18n.language === 'fr' ? fr : enUS;
-  const { messages, loading, sending, sendMessage, sendFile, deleteMessage } = useChatMessages(
+  const { messages, loading, sending, sendMessage, sendFile, sendVoice, deleteMessage } = useChatMessages(
     clientId,
     clientAuthUserId,
     onIncomingMessage
@@ -99,6 +100,7 @@ export function ChatThread({
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { isRecording, durationMs, start: startRecording, stop: stopRecording, cancel: cancelRecording, isSupported: voiceSupported } = useVoiceRecorder();
 
   const headerTitle = clientMode ? t('chat.advisor') : clientName;
   const headerSubtitle = clientMode ? t('chat.clientSubtitle') : t('chat.liveChat');
@@ -124,6 +126,28 @@ export function ChatThread({
     if (ok) setText('');
   };
 
+  const handleStartVoice = async () => {
+    if (sending || isRecording) return;
+    const result = await startRecording();
+    if (result === 'permission') toast.error(t('chat.voicePermissionDenied'));
+    if (result === 'unsupported') toast.error(t('chat.voiceUnsupported'));
+  };
+
+  const handleCancelVoice = () => {
+    cancelRecording();
+  };
+
+  const handleSendVoice = async () => {
+    if (!isRecording || sending) return;
+    const recorded = await stopRecording();
+    if (!recorded) {
+      toast.error(t('chat.voiceTooShort'));
+      return;
+    }
+    const ok = await sendVoice(recorded.blob, recorded.mimeType);
+    if (!ok) toast.error(t('chat.voiceSendFailed'));
+  };
+
   const handleDelete = async (msgId: string) => {
     const ok = await deleteMessage(msgId);
     if (ok) toast.success(t('chat.messageDeleted'));
@@ -137,7 +161,7 @@ export function ChatThread({
   };
 
   const hasCaption = (msg: ChatMessage) =>
-    isFileMessage(msg) && msg.body && !msg.body.startsWith('📎');
+    isFileMessage(msg) && msg.body && !msg.body.startsWith('📎') && !msg.body.startsWith('🎤');
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-secondary/40">
@@ -190,6 +214,7 @@ export function ChatThread({
               const isFromClient = !!clientAuthUserId && msg.sender_id === clientAuthUserId;
               const isRead = !!msg.read_at;
               const isFile = isFileMessage(msg);
+              const isVoice = isVoiceMessage(msg);
 
               return (
                 <div key={msg.id}>
@@ -244,7 +269,7 @@ export function ChatThread({
                           </div>
                         </div>
 
-                        {isFile && (
+                        {isFile && !isVoice && (
                           <button
                             type="button"
                             onClick={() => handleDownloadFile(msg)}
@@ -286,15 +311,59 @@ export function ChatThread({
         'shrink-0 px-3 py-3 bg-card border-t border-border',
         clientMode && 'pb-[calc(0.75rem+env(safe-area-inset-bottom))]'
       )}>
+        {isRecording ? (
+          <div className="flex items-center gap-2 max-w-2xl mx-auto">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={handleCancelVoice}
+              className="shrink-0 h-10 w-10 rounded-full text-destructive hover:bg-destructive/10"
+              title={t('common.cancel')}
+            >
+              <X className="w-5 h-5" />
+            </Button>
+            <div className="flex-1 flex items-center gap-3 bg-destructive/10 border border-destructive/20 rounded-full px-4 py-2.5 min-h-[44px]">
+              <span className="w-2.5 h-2.5 rounded-full bg-destructive animate-pulse shrink-0" />
+              <span className="text-sm font-medium text-destructive tabular-nums">
+                {formatVoiceDuration(durationMs)}
+              </span>
+              <span className="text-xs text-muted-foreground truncate">{t('chat.recordingVoice')}</span>
+            </div>
+            <Button
+              type="button"
+              size="icon"
+              onClick={handleSendVoice}
+              disabled={sending}
+              className="shrink-0 h-11 w-11 rounded-full bg-vayase-accent hover:bg-vayase-accent/90 text-vayase-night"
+              title={t('chat.sendVoice')}
+            >
+              {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Square className="w-4 h-4 fill-current" />}
+            </Button>
+          </div>
+        ) : (
         <div className="flex items-end gap-2 max-w-2xl mx-auto">
           <input
             ref={fileInputRef}
             type="file"
             className="hidden"
-            accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
+            accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,audio/*"
             onChange={handleFilePick}
             disabled={sending}
           />
+          {voiceSupported && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              disabled={sending}
+              onClick={handleStartVoice}
+              className="shrink-0 h-10 w-10 rounded-full text-muted-foreground hover:text-vayase-accent hover:bg-vayase-accent/10"
+              title={t('chat.recordVoice')}
+            >
+              <Mic className="w-5 h-5" />
+            </Button>
+          )}
           <Button
             type="button"
             variant="ghost"
@@ -327,6 +396,7 @@ export function ChatThread({
             {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
           </Button>
         </div>
+        )}
       </div>
     </div>
   );
