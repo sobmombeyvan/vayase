@@ -2,16 +2,39 @@ import { useCallback, useRef, useState } from 'react';
 
 const DEFAULT_MAX_MS = 120_000;
 
-function getSupportedMimeType(): string {
-  if (typeof MediaRecorder === 'undefined') return '';
-  const types = [
-    'audio/webm;codecs=opus',
-    'audio/webm',
-    'audio/mp4',
-    'audio/ogg;codecs=opus',
-    'audio/ogg',
-  ];
-  return types.find((type) => MediaRecorder.isTypeSupported(type)) ?? '';
+const MIME_CANDIDATES = [
+  'audio/webm;codecs=opus',
+  'audio/webm',
+  'audio/mp4',
+  'audio/aac',
+  'audio/ogg;codecs=opus',
+  'audio/ogg',
+];
+
+/** iOS Safari often reports no supported types but MediaRecorder still works */
+export function isVoiceRecordingAvailable(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (!window.isSecureContext) return false;
+  if (typeof MediaRecorder === 'undefined') return false;
+  return !!navigator.mediaDevices?.getUserMedia;
+}
+
+function createMediaRecorder(stream: MediaStream): MediaRecorder | null {
+  for (const mimeType of MIME_CANDIDATES) {
+    try {
+      if (MediaRecorder.isTypeSupported(mimeType)) {
+        return new MediaRecorder(stream, { mimeType });
+      }
+    } catch {
+      /* try next */
+    }
+  }
+
+  try {
+    return new MediaRecorder(stream);
+  } catch {
+    return null;
+  }
 }
 
 export function formatVoiceDuration(ms: number) {
@@ -42,18 +65,18 @@ export function useVoiceRecorder(maxDurationMs = DEFAULT_MAX_MS) {
   }, []);
 
   const start = useCallback(async (): Promise<'ok' | 'unsupported' | 'permission'> => {
-    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
-      return 'unsupported';
-    }
-
-    const mimeType = getSupportedMimeType();
-    if (!mimeType) return 'unsupported';
+    if (!isVoiceRecordingAvailable()) return 'unsupported';
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      const recorder = new MediaRecorder(stream, { mimeType });
+      const recorder = createMediaRecorder(stream);
+      if (!recorder) {
+        stream.getTracks().forEach((track) => track.stop());
+        return 'unsupported';
+      }
+
       chunksRef.current = [];
 
       recorder.ondataavailable = (event) => {
@@ -93,7 +116,7 @@ export function useVoiceRecorder(maxDurationMs = DEFAULT_MAX_MS) {
       }
 
       recorder.onstop = () => {
-        const mimeType = recorder.mimeType || 'audio/webm';
+        const mimeType = recorder.mimeType || 'audio/mp4';
         const blob = new Blob(chunksRef.current, { type: mimeType });
         cleanupStream();
         if (blob.size < 128 || elapsed < 500) {
@@ -119,5 +142,12 @@ export function useVoiceRecorder(maxDurationMs = DEFAULT_MAX_MS) {
     setDurationMs(0);
   }, [cleanupStream]);
 
-  return { isRecording, durationMs, start, stop, cancel, isSupported: !!getSupportedMimeType() };
+  return {
+    isRecording,
+    durationMs,
+    start,
+    stop,
+    cancel,
+    isSupported: isVoiceRecordingAvailable(),
+  };
 }

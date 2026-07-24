@@ -100,7 +100,7 @@ export function ChatThread({
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { isRecording, durationMs, start: startRecording, stop: stopRecording, cancel: cancelRecording, isSupported: voiceSupported } = useVoiceRecorder();
+  const { isRecording, durationMs, start: startRecording, stop: stopRecording, cancel: cancelRecording } = useVoiceRecorder();
 
   const headerTitle = clientMode ? t('chat.advisor') : clientName;
   const headerSubtitle = clientMode ? t('chat.clientSubtitle') : t('chat.liveChat');
@@ -342,7 +342,7 @@ export function ChatThread({
             </Button>
           </div>
         ) : (
-        <div className="flex items-end gap-2 max-w-2xl mx-auto">
+        <div className="flex items-end gap-1.5 sm:gap-2 max-w-2xl mx-auto">
           <input
             ref={fileInputRef}
             type="file"
@@ -351,32 +351,30 @@ export function ChatThread({
             onChange={handleFilePick}
             disabled={sending}
           />
-          {voiceSupported && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              disabled={sending}
-              onClick={handleStartVoice}
-              className="shrink-0 h-10 w-10 rounded-full text-muted-foreground hover:text-vayase-accent hover:bg-vayase-accent/10"
-              title={t('chat.recordVoice')}
-            >
-              <Mic className="w-5 h-5" />
-            </Button>
-          )}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            disabled={sending}
+            onClick={handleStartVoice}
+            className="shrink-0 h-10 w-10 rounded-full text-muted-foreground hover:text-vayase-accent hover:bg-vayase-accent/10 touch-manipulation"
+            title={t('chat.recordVoice')}
+          >
+            <Mic className="w-5 h-5" />
+          </Button>
           <Button
             type="button"
             variant="ghost"
             size="icon"
             disabled={sending}
             onClick={() => fileInputRef.current?.click()}
-            className="shrink-0 h-10 w-10 rounded-full text-muted-foreground hover:text-vayase-accent hover:bg-vayase-accent/10"
+            className="shrink-0 h-10 w-10 rounded-full text-muted-foreground hover:text-vayase-accent hover:bg-vayase-accent/10 touch-manipulation"
             title={t('chat.attachFile')}
           >
             <Paperclip className="w-5 h-5" />
           </Button>
 
-          <div className="flex-1 flex items-center bg-secondary/50 border border-border/60 rounded-full px-4 py-2.5 min-h-[44px] focus-within:ring-2 focus-within:ring-vayase-accent/30 focus-within:border-vayase-accent/40 transition-all">
+          <div className="flex-1 flex items-center bg-secondary/50 border border-border/60 rounded-full px-3 sm:px-4 py-2.5 min-h-[44px] min-w-0 focus-within:ring-2 focus-within:ring-vayase-accent/30 focus-within:border-vayase-accent/40 transition-all">
             <input
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -391,7 +389,7 @@ export function ChatThread({
             onClick={handleSend}
             disabled={(!text.trim() && !sending) || sending}
             size="icon"
-            className="shrink-0 h-11 w-11 rounded-full bg-vayase-accent hover:bg-vayase-accent/90 text-vayase-night shadow-sm disabled:opacity-40"
+            className="shrink-0 h-11 w-11 rounded-full bg-vayase-accent hover:bg-vayase-accent/90 text-vayase-night shadow-sm disabled:opacity-40 touch-manipulation"
           >
             {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
           </Button>
