@@ -35,6 +35,8 @@ supabase/.temp/
 .idea
 .cursor/
 .DS_Store
+._*
+**/._*
 *.suo
 *.ntvs*
 *.njsproj

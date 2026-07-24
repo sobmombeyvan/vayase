@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { Outlet, Navigate, useNavigate, NavLink, useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
@@ -9,11 +9,8 @@ import { NotificationEnableBanner } from '@/components/notifications/Notificatio
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { playMessageAlert } from '@/lib/notification-sound';
-import {
-  registerServiceWorker,
-  showAppNotification,
-  clearAppBadge,
-} from '@/lib/push-notifications';
+import { showAppNotification, clearAppBadge } from '@/lib/push-notifications';
+import { useBackgroundConnection } from '@/hooks/useBackgroundConnection';
 import { toast } from 'sonner';
 import {
   DropdownMenu,
@@ -68,14 +65,10 @@ export function ClientLayout() {
   });
 
   useEffect(() => {
-    registerServiceWorker();
-  }, []);
-
-  useEffect(() => {
     if (isMessages) clearAppBadge();
   }, [isMessages]);
 
-  const alertNewMessage = (body: string, msgId?: string) => {
+  const alertNewMessage = useCallback((body: string, msgId?: string) => {
     if (msgId && lastSeenMsgRef.current === msgId) return;
     if (msgId) lastSeenMsgRef.current = msgId;
 
@@ -97,55 +90,9 @@ export function ClientLayout() {
         },
       });
     }
-  };
+  }, [isMessages, navigate, queryClient]);
 
-  useEffect(() => {
-    if (!user || !clientInfo) return;
-
-    const channel = supabase
-      .channel(`client-chat-alerts-${user.id}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'chat_messages' },
-        (payload) => {
-          const msg = payload.new as { id: string; sender_id: string; body: string; client_id: string };
-          if (msg.sender_id === user.id || msg.client_id !== clientInfo.id) return;
-          alertNewMessage(msg.body, msg.id);
-        }
-      )
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, [user, clientInfo, isMessages, navigate, queryClient]);
-
-  useEffect(() => {
-    if (!user || !clientInfo) return;
-
-    const poll = async () => {
-      if (document.visibilityState === 'visible') return;
-
-      const { data } = await supabase
-        .from('chat_messages')
-        .select('id, body, sender_id')
-        .eq('client_id', clientInfo.id)
-        .neq('sender_id', user.id)
-        .is('read_at', null)
-        .order('created_at', { ascending: false })
-        .limit(1);
-
-      const latest = data?.[0];
-      if (latest && latest.id !== lastSeenMsgRef.current) {
-        alertNewMessage(latest.body, latest.id);
-      }
-    };
-
-    const interval = setInterval(poll, 20000);
-    document.addEventListener('visibilitychange', poll);
-    return () => {
-      clearInterval(interval);
-      document.removeEventListener('visibilitychange', poll);
-    };
-  }, [user, clientInfo, isMessages, navigate, queryClient]);
+  useBackgroundConnection(user?.id, clientInfo?.id, alertNewMessage);
 
   if (loading) {
     return (

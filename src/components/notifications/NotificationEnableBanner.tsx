@@ -2,17 +2,18 @@ import { useState } from 'react';
 import { Bell, X, Smartphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   isIosDevice,
   isStandalonePwa,
   notificationSupported,
-  registerServiceWorker,
-  requestNotificationPermission,
+  setupPushNotifications,
 } from '@/lib/push-notifications';
 
 const DISMISS_KEY = 'vayase-notif-banner-dismissed';
 
 export function NotificationEnableBanner() {
+  const { user } = useAuth();
   const [hidden, setHidden] = useState(() => localStorage.getItem(DISMISS_KEY) === '1');
   const [loading, setLoading] = useState(false);
 
@@ -24,11 +25,11 @@ export function NotificationEnableBanner() {
   const standalone = isStandalonePwa();
 
   const handleEnable = async () => {
+    if (!user?.id) return;
     setLoading(true);
-    await registerServiceWorker();
-    const result = await requestNotificationPermission();
+    const { permission } = await setupPushNotifications(user.id);
     setLoading(false);
-    if (result === 'granted') {
+    if (permission === 'granted') {
       setHidden(true);
       localStorage.setItem(DISMISS_KEY, '1');
     }
