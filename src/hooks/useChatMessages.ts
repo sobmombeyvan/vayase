@@ -385,8 +385,9 @@ export function useChatMessages(
   };
 
   const sendVoice = async (blob: Blob, mimeType: string) => {
-    const ext = mimeType.includes('mp4') ? 'm4a' : mimeType.includes('ogg') ? 'ogg' : 'webm';
-    const file = new File([blob], `voice_${Date.now()}.${ext}`, { type: mimeType });
+    const normalized = normalizeVoiceMime(mimeType);
+    const ext = voiceFileExtension(normalized);
+    const file = new File([blob], `voice_${Date.now()}.${ext}`, { type: normalized });
     return sendFile(file, VOICE_MESSAGE_BODY);
   };
 
@@ -513,17 +514,32 @@ export async function resolveMessageAttachmentPath(
   clientId: string
 ): Promise<string | null> {
   if (msg.attachment_path) return msg.attachment_path;
-  if (!isFileMessage(msg)) return null;
+  if (!isFileMessage(msg) && !isVoiceMessage(msg)) return null;
 
-  const fileName = getFileDisplayName(msg);
+  const fileName = msg.attachment_name ? getFileDisplayName(msg) : null;
   const prefixes = [`${clientId}/chat`, clientId];
 
   for (const bucket of [PRIMARY_BUCKET, CHAT_BUCKET]) {
     for (const prefix of prefixes) {
       const files = await listStorageFolder(bucket, prefix);
-      const match = matchStorageFile(files, fileName, msg.created_at);
-      if (match) {
-        return encodeStoredAttachment(bucket, `${prefix}/${match.name}`);
+
+      if (isVoiceMessage(msg)) {
+        const voiceFiles = files.filter((f) => f.name.startsWith('voice_'));
+        if (voiceFiles.length > 0) {
+          const match = fileName && fileName !== 'Message vocal'
+            ? matchStorageFile(voiceFiles, fileName, msg.created_at)
+            : matchStorageFile(voiceFiles, voiceFiles[0].name, msg.created_at);
+          if (match) {
+            return encodeStoredAttachment(bucket, `${prefix}/${match.name}`);
+          }
+        }
+      }
+
+      if (fileName && fileName !== 'Message vocal') {
+        const match = matchStorageFile(files, fileName, msg.created_at);
+        if (match) {
+          return encodeStoredAttachment(bucket, `${prefix}/${match.name}`);
+        }
       }
     }
   }
@@ -560,6 +576,20 @@ export function formatFileSize(bytes: number | null | undefined) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
 }
 
+export function normalizeVoiceMime(mimeType: string): string {
+  const m = (mimeType || '').toLowerCase();
+  if (!m || m === 'video/mp4' || m === 'video/quicktime') return 'audio/mp4';
+  if (m.startsWith('audio/')) return mimeType;
+  return 'audio/webm';
+}
+
+export function voiceFileExtension(mimeType: string): string {
+  const normalized = normalizeVoiceMime(mimeType);
+  if (normalized.includes('mp4') || normalized.includes('aac')) return 'm4a';
+  if (normalized.includes('ogg')) return 'ogg';
+  return 'webm';
+}
+
 export function isImageMime(mime: string | null | undefined) {
   return !!mime?.startsWith('image/');
 }
@@ -569,19 +599,24 @@ export function isAudioMime(mime: string | null | undefined) {
 }
 
 export function isVoiceMessage(msg: ChatMessage) {
-  return isAudioMime(msg.attachment_mime) || msg.body?.startsWith('🎤');
+  if (msg.body?.startsWith('🎤')) return true;
+  if (isAudioMime(msg.attachment_mime)) return true;
+  const name = msg.attachment_name?.toLowerCase() ?? '';
+  return name.startsWith('voice_') && /\.(m4a|webm|ogg|mp4|aac)$/.test(name);
 }
 
 export function isFileMessage(msg: ChatMessage) {
   return !!(
     msg.attachment_path ||
     msg.attachment_name ||
-    (msg.body && msg.body.startsWith('📎'))
+    (msg.body && msg.body.startsWith('📎')) ||
+    isVoiceMessage(msg)
   );
 }
 
 export function getFileDisplayName(msg: ChatMessage) {
   if (msg.attachment_name) return msg.attachment_name;
+  if (msg.body?.startsWith('🎤')) return 'Message vocal';
   if (msg.body?.startsWith('📎')) return msg.body.replace(/^📎\s*/, '').trim() || 'document';
   return 'document';
 }

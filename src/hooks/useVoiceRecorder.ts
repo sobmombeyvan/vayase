@@ -11,6 +11,11 @@ const MIME_CANDIDATES = [
   'audio/ogg',
 ];
 
+function isIosDevice() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
 /** iOS Safari often reports no supported types but MediaRecorder still works */
 export function isVoiceRecordingAvailable(): boolean {
   if (typeof window === 'undefined') return false;
@@ -20,11 +25,18 @@ export function isVoiceRecordingAvailable(): boolean {
 }
 
 function createMediaRecorder(stream: MediaStream): MediaRecorder | null {
-  for (const mimeType of MIME_CANDIDATES) {
+  const ios = isIosDevice();
+  const candidates = ios
+    ? ['audio/mp4', 'audio/aac', ...MIME_CANDIDATES]
+    : MIME_CANDIDATES;
+
+  for (const mimeType of candidates) {
     try {
-      if (MediaRecorder.isTypeSupported(mimeType)) {
-        return new MediaRecorder(stream, { mimeType });
+      if (ios && (mimeType === 'audio/mp4' || mimeType === 'audio/aac')) {
+        return new MediaRecorder(stream, { mimeType: 'audio/mp4' });
       }
+      if (!MediaRecorder.isTypeSupported(mimeType)) continue;
+      return new MediaRecorder(stream, { mimeType });
     } catch {
       /* try next */
     }
@@ -68,7 +80,9 @@ export function useVoiceRecorder(maxDurationMs = DEFAULT_MAX_MS) {
     if (!isVoiceRecordingAvailable()) return 'unsupported';
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true },
+      });
       streamRef.current = stream;
 
       const recorder = createMediaRecorder(stream);
@@ -116,7 +130,11 @@ export function useVoiceRecorder(maxDurationMs = DEFAULT_MAX_MS) {
       }
 
       recorder.onstop = () => {
-        const mimeType = recorder.mimeType || 'audio/mp4';
+        let mimeType = recorder.mimeType || '';
+        if (!mimeType || mimeType === 'video/mp4') mimeType = 'audio/mp4';
+        if (!mimeType.startsWith('audio/')) {
+          mimeType = isIosDevice() ? 'audio/mp4' : 'audio/webm';
+        }
         const blob = new Blob(chunksRef.current, { type: mimeType });
         cleanupStream();
         if (blob.size < 128 || elapsed < 500) {

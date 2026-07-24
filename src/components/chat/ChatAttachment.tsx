@@ -39,7 +39,7 @@ export function ChatAttachment({ message, isOwn }: ChatAttachmentProps) {
   }, [message.attachment_path, fileName, isImage, hasPath, isVoice]);
 
   if (isVoice) {
-    return <ChatVoicePlayer message={message} isOwn={isOwn} />;
+    return <ChatVoicePlayer message={message} isOwn={isOwn} clientId={message.client_id} />;
   }
 
   return (
